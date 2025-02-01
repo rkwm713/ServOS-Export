@@ -8,6 +8,10 @@
 </head>
 <body>
   <script>
+    var t = TrelloPowerUp.iframe({
+      scope: 'read'
+    });
+
     // This code initializes your Power-Up and tells Trello what buttons to show.
     TrelloPowerUp.initialize({
       // This creates a board button (a button you see on the Trello board)
@@ -55,6 +59,11 @@
           document.getElementById('output').textContent = 'Error: ' + error.message;
         });
     });
+
+    window.onerror = function(msg, src, line, col, error) {
+      console.log('Error: ', msg);
+      console.log('Stack: ', error && error.stack);
+    };
   </script>
 </body>
 </html>
