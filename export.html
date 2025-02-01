@@ -1,147 +1,238 @@
-// Initialize Trello Power-Up
-var t = TrelloPowerUp.iframe();
-
-// Helper function with better error handling
-function extractCustomFieldValue(item) {
-  try {
-    if (!item || !item.value) return '';
-    const { text, number, date } = item.value;
-    return text || number || date || '';
-  } catch (err) {
-    console.error('Error extracting custom field value:', err);
-    return '';
-  }
-}
-
-// Main export function with proper error handling
-async function exportData() {
-  const outputElement = document.getElementById('output');
-  const downloadContainer = document.getElementById('downloadContainer');
-  
-  try {
-    // Show loading state
-    outputElement.textContent = 'Loading data...';
-    
-    // Fetch all required data
-    const [cards, lists, members, customFields] = await Promise.all([
-      t.board('cards', 'read'),
-      t.board('lists', 'read'),
-      t.board('members', 'read'),
-      t.board('customFields', 'read')
-    ]);
-    
-    // Validate data
-    if (!cards || !lists || !members || !customFields) {
-      throw new Error('Failed to fetch required data from Trello');
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Export Cards Data</title>
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
     
-    // Create custom fields mapping with error checking
-    const customFieldMapping = {};
-    const customFieldsArray = Array.isArray(customFields) ? customFields : Object.values(customFields);
-    customFieldsArray.forEach(cf => {
-      if (cf && cf.name && cf.id) {
-        customFieldMapping[cf.name] = cf.id;
-      }
-    });
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
     
-    // Expected custom fields (unchanged)
-    const expectedCustomFields = [
-      'W.O. #',
-      'Attacher W.O. #',
-      'OneDrive Link',
-      'Katapult',
-      'Staking Site Count',
-      'TT Site Count',
-      'TT Start',
-      'Sent to Landon',
-      'TT Received Back',
-      'ArcFM Start',
-      'ArcFM Finished',
-      'Sent to Damon',
-      'Sent to Scheduling',
-      'Added to Schedule',
-      'Construction Started',
-      'Construction Completed',
-      'Pre-ArcFM Started',
-      'Pre-ArcFM Completed'
-    ];
+    button {
+      background-color: #0079BF;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
     
-    // Create CSV header
-    const header = ['List Name', 'Card Name', 'Members', 'Labels', ...expectedCustomFields];
-    const csvRows = [header.join(',')];
+    button:hover {
+      background-color: #026AA7;
+    }
     
-    // Process cards with validation
-    Object.entries(cards).forEach(([cardId, card]) => {
-      if (!card) return; // Skip invalid cards
-      
-      // Get list name with validation
-      const list = lists[card.idList];
-      const listName = list ? list.name : '';
-      
-      // Get member names with validation
-      const memberNames = (card.idMembers || [])
-        .map(memberId => {
-          const member = members[memberId];
-          return member ? member.fullName : '';
-        })
-        .filter(Boolean)
-        .join('; ');
-      
-      // Get labels with validation
-      const labelNames = (card.labels || [])
-        .map(label => label.name || label.color)
-        .filter(Boolean)
-        .join('; ');
-      
-      // Process custom fields with validation
-      const customValues = expectedCustomFields.map(fieldName => {
-        const fieldId = customFieldMapping[fieldName];
-        if (!fieldId || !card.customFieldItems) return '""';
-        
-        const fieldItem = card.customFieldItems.find(item => item.idCustomField === fieldId);
-        return fieldItem ? `"${extractCustomFieldValue(fieldItem)}"` : '""';
-      });
-      
-      // Create row with proper escaping
-      const row = [
-        `"${listName.replace(/"/g, '""')}"`,
-        `"${(card.name || '').replace(/"/g, '""')}"`,
-        `"${memberNames.replace(/"/g, '""')}"`,
-        `"${labelNames.replace(/"/g, '""')}"`,
-        ...customValues
-      ];
-      
-      csvRows.push(row.join(','));
-    });
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
     
-    const csvContent = csvRows.join('\n');
+    #downloadContainer {
+      margin-top: 20px;
+    }
     
-    // Display output
-    outputElement.textContent = csvContent;
+    #downloadContainer a {
+      background-color: #5AAC44;
+      color: white;
+      text-decoration: none;
+      padding: 10px 20px;
+      border-radius: 3px;
+      display: inline-block;
+    }
     
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const downloadLink = document.createElement('a');
-    downloadLink.href = url;
-    downloadLink.download = 'trello_cards_export.csv';
-    downloadLink.textContent = 'Download CSV';
-    downloadLink.className = 'button';
+    #downloadContainer a:hover {
+      background-color: #519839;
+    }
     
-    // Update download container
-    downloadContainer.innerHTML = '';
-    downloadContainer.appendChild(downloadLink);
+    .error {
+      color: #D0021B;
+      padding: 10px;
+      background-color: #FFE9E9;
+      border-radius: 3px;
+      margin: 10px 0;
+    }
     
-  } catch (error) {
-    console.error('Export failed:', error);
-    outputElement.textContent = `Export failed: ${error.message}`;
-  }
-}
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <h1>Export Cards Data</h1>
+  <p>Click the button below to generate and download your CSV file.</p>
+  <button id="exportBtn">Generate CSV</button>
+  <pre id="output"></pre>
+  <div id="downloadContainer"></div>
 
-// Add event listener with error handling
-document.getElementById('exportBtn').addEventListener('click', () => {
-  exportData().catch(err => {
-    console.error('Error in export:', err);
-    document.getElementById('output').textContent = 'Export failed. Please check console for details.';
-  });
-});
+  <script>
+    // Initialize Trello Power-Up
+    var t = TrelloPowerUp.iframe();
+
+    // Helper function to safely extract custom field values
+    function extractCustomFieldValue(item) {
+      try {
+        if (!item || !item.value) return '';
+        const { text, number, date } = item.value;
+        return text || number || date || '';
+      } catch (err) {
+        console.error('Error extracting custom field value:', err);
+        return '';
+      }
+    }
+
+    // Main export function with error handling
+    async function exportData() {
+      const outputElement = document.getElementById('output');
+      const downloadContainer = document.getElementById('downloadContainer');
+      
+      try {
+        // Show loading state
+        outputElement.textContent = 'Loading data...';
+        outputElement.className = 'loading';
+        
+        // Fetch all required data
+        const [cards, lists, members, customFields] = await Promise.all([
+          t.board('cards', 'read'),
+          t.board('lists', 'read'),
+          t.board('members', 'read'),
+          t.board('customFields', 'read')
+        ]);
+        
+        // Validate data
+        if (!cards || !lists || !members || !customFields) {
+          throw new Error('Failed to fetch required data from Trello');
+        }
+        
+        // Create custom fields mapping
+        const customFieldMapping = {};
+        const customFieldsArray = Array.isArray(customFields) ? customFields : Object.values(customFields);
+        customFieldsArray.forEach(cf => {
+          if (cf && cf.name && cf.id) {
+            customFieldMapping[cf.name] = cf.id;
+          }
+        });
+        
+        // Define expected custom fields
+        const expectedCustomFields = [
+          'W.O. #',
+          'Attacher W.O. #',
+          'OneDrive Link',
+          'Katapult',
+          'Staking Site Count',
+          'TT Site Count',
+          'TT Start',
+          'Sent to Landon',
+          'TT Received Back',
+          'ArcFM Start',
+          'ArcFM Finished',
+          'Sent to Damon',
+          'Sent to Scheduling',
+          'Added to Schedule',
+          'Construction Started',
+          'Construction Completed',
+          'Pre-ArcFM Started',
+          'Pre-ArcFM Completed'
+        ];
+        
+        // Create CSV header
+        const header = ['List Name', 'Card Name', 'Members', 'Labels', ...expectedCustomFields];
+        const csvRows = [header.join(',')];
+        
+        // Process cards
+        Object.entries(cards).forEach(([cardId, card]) => {
+          if (!card) return;
+          
+          // Get list name
+          const list = lists[card.idList];
+          const listName = list ? list.name : '';
+          
+          // Get member names
+          const memberNames = (card.idMembers || [])
+            .map(memberId => {
+              const member = members[memberId];
+              return member ? member.fullName : '';
+            })
+            .filter(Boolean)
+            .join('; ');
+          
+          // Get labels
+          const labelNames = (card.labels || [])
+            .map(label => label.name || label.color)
+            .filter(Boolean)
+            .join('; ');
+          
+          // Process custom fields
+          const customValues = expectedCustomFields.map(fieldName => {
+            const fieldId = customFieldMapping[fieldName];
+            if (!fieldId || !card.customFieldItems) return '""';
+            
+            const fieldItem = card.customFieldItems.find(item => 
+              item.idCustomField === fieldId
+            );
+            return fieldItem ? `"${extractCustomFieldValue(fieldItem)}"` : '""';
+          });
+          
+          // Create row with proper escaping
+          const row = [
+            `"${listName.replace(/"/g, '""')}"`,
+            `"${(card.name || '').replace(/"/g, '""')}"`,
+            `"${memberNames.replace(/"/g, '""')}"`,
+            `"${labelNames.replace(/"/g, '""')}"`,
+            ...customValues
+          ];
+          
+          csvRows.push(row.join(','));
+        });
+        
+        const csvContent = csvRows.join('\n');
+        
+        // Display output
+        outputElement.className = '';
+        outputElement.textContent = csvContent;
+        
+        // Create download link
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = 'trello_cards_export.csv';
+        downloadLink.textContent = 'Download CSV';
+        
+        // Update download container
+        downloadContainer.innerHTML = '';
+        downloadContainer.appendChild(downloadLink);
+        
+      } catch (error) {
+        console.error('Export failed:', error);
+        outputElement.className = 'error';
+        outputElement.textContent = `Export failed: ${error.message}. Please check the console for more details.`;
+      }
+    }
+
+    // Add event listener
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      exportData().catch(err => {
+        console.error('Error in export:', err);
+        const outputElement = document.getElementById('output');
+        outputElement.className = 'error';
+        outputElement.textContent = 'Export failed. Please check the console for details.';
+      });
+    });
+  </script>
+</body>
+</html>
