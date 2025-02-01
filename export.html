@@ -16,25 +16,21 @@
       margin: 0 auto;
       background-color: #f4f5f7;
     }
-    
     .container {
       background: white;
       padding: 20px;
       border-radius: 8px;
       box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
-
     h1 {
       color: #172b4d;
       margin-bottom: 20px;
     }
-    
     .button-group {
       display: flex;
       gap: 10px;
       margin-bottom: 20px;
     }
-
     button {
       background-color: #0079BF;
       color: white;
@@ -45,23 +41,19 @@
       font-size: 14px;
       transition: background-color 0.2s;
     }
-    
     button:hover {
       background-color: #026AA7;
     }
-
     button:disabled {
       background-color: #97a0af;
       cursor: not-allowed;
     }
-    
     .loading {
       display: none;
       align-items: center;
       gap: 10px;
       margin-bottom: 20px;
     }
-    
     .spinner {
       border: 4px solid #f3f3f3;
       border-top: 4px solid #0079BF;
@@ -70,12 +62,10 @@
       height: 20px;
       animation: spin 1s linear infinite;
     }
-    
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
-
     .error-message {
       color: #eb5a46;
       padding: 10px;
@@ -84,7 +74,6 @@
       margin: 10px 0;
       display: none;
     }
-
     #downloadContainer {
       margin-top: 20px;
     }
@@ -116,7 +105,7 @@
       errorDiv.style.display = 'block';
     };
 
-    // Utility: Show or hide a loading indicator
+    // Utility: Show or hide the loading indicator
     const showLoading = (isVisible) => {
       document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
     };
@@ -136,25 +125,48 @@
       }
       
       try {
-        members = await t.board('members');
+        let membersResult = await t.board('members');
+        // Ensure members is an array
+        if (Array.isArray(membersResult)) {
+          members = membersResult;
+        } else if (membersResult && typeof membersResult === 'object') {
+          members = Object.values(membersResult);
+        } else {
+          members = [];
+        }
         console.log('Members fetched:', members);
       } catch (error) {
         console.error("Failed to fetch board('members'):", error);
       }
       
       try {
-        lists = await t.board('lists');
+        let listsResult = await t.board('lists');
+        // Ensure lists is an array
+        if (Array.isArray(listsResult)) {
+          lists = listsResult;
+        } else if (listsResult && typeof listsResult === 'object') {
+          lists = Object.values(listsResult);
+        } else {
+          lists = [];
+        }
         console.log('Lists fetched:', lists);
       } catch (error) {
         console.error("Failed to fetch board('lists'):", error);
       }
       
       try {
-        customFields = await t.board('customFields');
+        let customFieldsResult = await t.board('customFields');
+        // Ensure customFields is an array
+        if (Array.isArray(customFieldsResult)) {
+          customFields = customFieldsResult;
+        } else if (customFieldsResult && typeof customFieldsResult === 'object') {
+          customFields = Object.values(customFieldsResult);
+        } else {
+          customFields = [];
+        }
         console.log('Custom fields fetched:', customFields);
       } catch (error) {
         console.warn("Failed to fetch board('customFields'):", error);
-        // If custom fields are not available, we default to an empty array.
         customFields = [];
       }
       
