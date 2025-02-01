@@ -126,7 +126,7 @@
       
       try {
         let membersResult = await t.board('members');
-        // Ensure members is an array
+        console.log('Raw members result:', membersResult);
         if (Array.isArray(membersResult)) {
           members = membersResult;
         } else if (membersResult && typeof membersResult === 'object') {
@@ -137,11 +137,12 @@
         console.log('Members fetched:', members);
       } catch (error) {
         console.error("Failed to fetch board('members'):", error);
+        members = [];
       }
       
       try {
         let listsResult = await t.board('lists');
-        // Ensure lists is an array
+        console.log('Raw lists result:', listsResult);
         if (Array.isArray(listsResult)) {
           lists = listsResult;
         } else if (listsResult && typeof listsResult === 'object') {
@@ -152,11 +153,12 @@
         console.log('Lists fetched:', lists);
       } catch (error) {
         console.error("Failed to fetch board('lists'):", error);
+        lists = [];
       }
       
       try {
         let customFieldsResult = await t.board('customFields');
-        // Ensure customFields is an array
+        console.log('Raw custom fields result:', customFieldsResult);
         if (Array.isArray(customFieldsResult)) {
           customFields = customFieldsResult;
         } else if (customFieldsResult && typeof customFieldsResult === 'object') {
@@ -187,34 +189,42 @@
 
         // Build mapping: member ID → full name
         const memberMapping = {};
-        members.forEach(member => {
-          memberMapping[member.id] = member.fullName || member.username;
-        });
+        if (Array.isArray(members)) {
+          members.forEach(member => {
+            memberMapping[member.id] = member.fullName || member.username || "";
+          });
+        } else {
+          console.warn("Members is not an array, received:", members);
+        }
 
         // Build mapping: list ID → list name
         const listMapping = {};
-        lists.forEach(list => {
-          listMapping[list.id] = list.name;
-        });
+        if (Array.isArray(lists)) {
+          lists.forEach(list => {
+            listMapping[list.id] = list.name;
+          });
+        } else {
+          console.warn("Lists is not an array, received:", lists);
+        }
 
         // Build mapping: custom field ID → custom field name
+        // NOTE: Many custom field objects may use "idCustomField" rather than "id"
         const customFieldMapping = {};
         if (Array.isArray(customFields)) {
           customFields.forEach(cf => {
-            customFieldMapping[cf.id] = cf.name;
+            const cfId = cf.idCustomField || cf.id;  // Use idCustomField if available
+            customFieldMapping[cfId] = cf.name;
           });
         } else {
-          for (let key in customFields) {
-            customFieldMapping[customFields[key].id] = customFields[key].name;
-          }
+          console.warn("Custom fields is not an array, received:", customFields);
         }
 
         // Map each card into the desired export object
         return cards.map(card => {
-          // Process custom fields for this card
           let cardCustomFields = {};
           if (card.customFieldItems) {
             card.customFieldItems.forEach(item => {
+              // Look up the custom field name using idCustomField from the card data
               const fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
               let value = '';
               if (item.value) {
@@ -238,68 +248,4 @@
           };
         });
       } catch (error) {
-        throw new Error('Failed to fetch card data: ' + error.message);
-      }
-    }
-
-    /**
-     * Helper: Determine the header order for export.
-     * Fixed headers are: cardname, cardlistname, cardlabelnames, cardmemberfullnames.
-     * Any additional keys (custom fields) are appended.
-     */
-    function determineHeaderOrder(cards) {
-      const fixedHeaders = ['cardname', 'cardlistname', 'cardlabelnames', 'cardmemberfullnames'];
-      const extraHeadersSet = new Set();
-      cards.forEach(card => {
-        Object.keys(card).forEach(key => {
-          if (!fixedHeaders.includes(key)) {
-            extraHeadersSet.add(key);
-          }
-        });
-      });
-      return fixedHeaders.concat(Array.from(extraHeadersSet));
-    }
-
-    // Export card data to an Excel file
-    async function exportToExcel() {
-      try {
-        showLoading(true);
-        const cards = await getCardData();
-        const headerOrder = determineHeaderOrder(cards);
-        const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
-        XLSX.writeFile(workbook, "trello-cards.xlsx");
-        showLoading(false);
-      } catch (error) {
-        showLoading(false);
-        showError(error.message);
-      }
-    }
-
-    // Export card data to a CSV file
-    async function exportToCSV() {
-      try {
-        showLoading(true);
-        const cards = await getCardData();
-        const headerOrder = determineHeaderOrder(cards);
-        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
-        const csv = XLSX.utils.sheet_to_csv(worksheet);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'trello-cards.csv';
-        link.click();
-        showLoading(false);
-      } catch (error) {
-        showLoading(false);
-        showError(error.message);
-      }
-    }
-
-    // Attach event listeners to export buttons
-    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
-    document.getElementById('exportCSV').addEventListener('click', exportToCSV);
-  </script>
-</body>
-</html>
+        throw new Error('Failed to fe
