@@ -8,7 +8,6 @@
   </head>
   <body>
     <script>
-      // Initialize the Power-Up and add a board button
       TrelloPowerUp.initialize({
         'board-buttons': function(t, options) {
           return [{
@@ -16,7 +15,7 @@
             callback: function(t) {
               return t.popup({
                 title: 'Export Cards Data',
-                url: './export.html', // popup URL (also hosted on GitHub Pages)
+                url: './export.html', // URL to your popup (hosted on GitHub Pages)
                 height: 500
               });
             }
