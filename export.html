@@ -108,36 +108,113 @@
   <script>
     // Initialize the Trello Power-Up iframe communication
     var t = TrelloPowerUp.iframe();
-    
-    // Display an error message in the UI
+
+    // Utility function: show error message in the UI
     const showError = (message) => {
       const errorDiv = document.getElementById('errorMessage');
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
     };
 
-    // Toggle the loading indicator
+    // Utility function: show/hide the loading indicator
     const showLoading = (isVisible) => {
       document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
     };
 
-    // Fetch card data from the board with error handling
+    /**
+     * Fetches cards along with additional board data (members, lists, custom fields)
+     * and maps each card into an object with keys:
+     *  - cardname
+     *  - cardlistname
+     *  - cardlabelnames
+     *  - cardmemberfullnames
+     *  - plus each custom field (using the custom field's name)
+     */
     async function getCardData() {
       try {
-        const cards = await t.cards('all');
-        // Process each card to extract necessary fields
-        return cards.map(card => ({
-          id: card.id,
-          name: card.name,
-          description: card.desc,
-          url: card.url,
-          due: card.due ? new Date(card.due).toLocaleString() : '',
-          list: card.list ? card.list.name : '',
-          labels: card.labels ? card.labels.map(l => l.name).join(', ') : ''
-        }));
+        // Fetch all cards, board members, lists, and custom field definitions in parallel
+        const [cards, members, lists, customFields] = await Promise.all([
+          t.cards('all'),
+          t.board('members'),
+          t.board('lists'),
+          t.board('customFields')
+        ]);
+
+        // Build mapping from member IDs to full names
+        const memberMapping = {};
+        members.forEach(member => {
+          memberMapping[member.id] = member.fullName || member.username;
+        });
+
+        // Build mapping from list IDs to list names
+        const listMapping = {};
+        lists.forEach(list => {
+          listMapping[list.id] = list.name;
+        });
+
+        // Build mapping from custom field IDs to custom field names
+        const customFieldMapping = {};
+        if (Array.isArray(customFields)) {
+          customFields.forEach(cf => {
+            customFieldMapping[cf.id] = cf.name;
+          });
+        } else {
+          for (let key in customFields) {
+            customFieldMapping[customFields[key].id] = customFields[key].name;
+          }
+        }
+
+        // Process each card to build the export object
+        return cards.map(card => {
+          // Extract custom field values from the card (if any)
+          let cardCustomFields = {};
+          if (card.customFieldItems) {
+            card.customFieldItems.forEach(item => {
+              // Determine the display name of the custom field using our mapping
+              const fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
+              let value = '';
+              if (item.value) {
+                if (item.value.text) {
+                  value = item.value.text;
+                } else if (item.value.number) {
+                  value = item.value.number;
+                } else if (item.value.date) {
+                  value = new Date(item.value.date).toLocaleString();
+                }
+              }
+              cardCustomFields[fieldName] = value;
+            });
+          }
+          return {
+            cardname: card.name,
+            cardlistname: listMapping[card.idList] || '',
+            cardlabelnames: card.labels ? card.labels.map(l => l.name).join(', ') : '',
+            cardmemberfullnames: card.idMembers ? card.idMembers.map(id => memberMapping[id]).join(', ') : '',
+            ...cardCustomFields
+          };
+        });
       } catch (error) {
         throw new Error('Failed to fetch card data: ' + error.message);
       }
+    }
+
+    /**
+     * Helper: Given an array of card objects, determine the header order.
+     * We want the headers in the order:
+     *  [cardname, cardlistname, cardlabelnames, cardmemberfullnames, ...custom fields]
+     */
+    function determineHeaderOrder(cards) {
+      const fixedHeaders = ['cardname', 'cardlistname', 'cardlabelnames', 'cardmemberfullnames'];
+      const extraHeadersSet = new Set();
+      cards.forEach(card => {
+        Object.keys(card).forEach(key => {
+          if (!fixedHeaders.includes(key)) {
+            extraHeadersSet.add(key);
+          }
+        });
+      });
+      const extraHeaders = Array.from(extraHeadersSet);
+      return fixedHeaders.concat(extraHeaders);
     }
 
     // Export card data to an Excel file
@@ -145,8 +222,10 @@
       try {
         showLoading(true);
         const cards = await getCardData();
+        const headerOrder = determineHeaderOrder(cards);
         const workbook = XLSX.utils.book_new();
-        const worksheet = XLSX.utils.json_to_sheet(cards);
+        // Create a worksheet using the header order; this ensures our CSV/Excel shows the desired headers.
+        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
         XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
         XLSX.writeFile(workbook, "trello-cards.xlsx");
         showLoading(false);
@@ -161,7 +240,10 @@
       try {
         showLoading(true);
         const cards = await getCardData();
-        const worksheet = XLSX.utils.json_to_sheet(cards);
+        const headerOrder = determineHeaderOrder(cards);
+        // Create a worksheet with the desired headers
+        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
+        // Convert the worksheet to CSV text
         const csv = XLSX.utils.sheet_to_csv(worksheet);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -181,4 +263,3 @@
   </script>
 </body>
 </html>
-
