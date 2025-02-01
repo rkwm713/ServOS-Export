@@ -142,26 +142,23 @@
         members = [];
       }
       
-      // Fetch lists and ensure we have an array
+       // Fetch lists and ensure we have an array
       try {
         let listsResult = await t.board('lists');
         console.log('Raw lists result:', listsResult);
-        if (listsResult === undefined || listsResult === null) {
-          console.warn("Lists result is null or undefined; setting lists to []");
-          lists = [];
-        } else if (Array.isArray(listsResult)) {
+        if (Array.isArray(listsResult)) {
           lists = listsResult;
-        } else if (typeof listsResult === 'object') {
+        } else if (listsResult && typeof listsResult === 'object') {
           lists = Object.values(listsResult);
         } else {
           lists = [];
         }
         console.log('Lists fetched:', lists);
       } catch (error) {
-        console.error("Failed to fetch board('lists'):", error);
+        console.error("Failed to fetch board('lists'):", error, JSON.stringify(error));
         lists = [];
       }
-      
+
       // Fetch custom fields and ensure we have an array
       try {
         let customFieldsResult = await t.board('customFields');
