@@ -88,7 +88,7 @@
             // Build REST API URLs to fetch lists, cards, members, and custom fields.
             var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
             var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
-            var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=username&key=${apiKey}&token=${token}`;
+            var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=fullName&key=${apiKey}&token=${token}`;
             var customFieldsURL = `https://api.trello.com/1/boards/${boardId}/customFields?key=${apiKey}&token=${token}`;
 
             Promise.all([
@@ -101,7 +101,7 @@
               var listMap = {};
               lists.forEach(function(list) { listMap[list.id] = list.name; });
               var memberMap = {};
-              members.forEach(function(member) { memberMap[member.id] = member.username; });
+              members.forEach(function(member) { memberMap[member.id] = member.fullName; });
               var customFieldMap = {};
               customFields.forEach(function(field) { customFieldMap[field.id] = field.name; });
 
