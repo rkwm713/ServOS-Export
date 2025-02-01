@@ -1,167 +1,74 @@
 <!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Trello Export Power-Up (Enhanced)</title>
-  <!-- Load the Trello Power-Up client library only once -->
-  <script src="https://p.trellocdn.com/power-up.min.js"></script>
-</head>
-<body>
-  <button id="exportButton">Export Cards to CSV</button>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Trello Export Power-Up (Enhanced)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Load the Trello Power-Up client library -->
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // URL for your custom icon (must be hosted via HTTPS)
+      const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
 
-  <script>
-    // Initialize the Trello Power-Up client
-    var t = TrelloPowerUp.iframe();
-
-    // Wait for the iframe to render, which also parses the URL hash and secret.
-    t.render(function() {
-      // Check for secret; if missing, warn the user.
-      if (!t.arg('secret')) {
-        console.warn('Power-Up iframe initialized without a secret. Requests to Trello (and t.signUrl) will not work.');
+      // Check if a secret is provided (for signing external URLs)
+      if (!TrelloPowerUp.iframe().arg('secret')) {
+        console.warn('Power-Up iframe initialized without a secret. Signing URLs (if needed) may not work.');
       }
       
-      // If you need to open external URLs (e.g., for popups), remember to sign them:
-      // let signedUrl = t.signUrl('https://yourdomain.com/page.html');
-
-      // List of custom fields we want to export – adjust as needed
-      var desiredCustomFields = [
-        'W.O. #',
-        'Attacher W.O. #',
-        'Katapult',
-        'Staking Site Count',
-        'TT Site Count',
-        'TT Start',
-        'Sent to Landon',
-        'TT Received Back',
-        'ArcFM Start',
-        'ArcFM Finished',
-        'Sent to Damon',
-        'Sent to Scheduling',
-        'Added to Schedule',
-        'Construction Started',
-        'Construction Completed',
-        'Pre-ArcFM Started',
-        'Pre-ArcFM Completed',
-        'Priority',
-        'OneDrive Link'
-      ];
-
-      // Set up export functionality after render is complete.
-      document.getElementById("exportButton").addEventListener("click", function() {
-
-        // Step 1. Get all cards (returns a minimal set of fields)
-        t.cards('all')
-        .then(function(basicCards) {
-          console.log("Basic cards data:", basicCards);
-          // For each card, retrieve additional details using t.card()
-          var detailPromises = basicCards.map(function(card) {
-            // Request extra fields (idList, idMembers) for each card
-            return t.card(card.id, ['idList', 'idMembers'])
-              .then(function(cardDetails) {
-                // Merge extra details into the card object
-                card.idList = cardDetails.idList;
-                card.idMembers = cardDetails.idMembers;
-                // Also fetch custom field items for this card
-                return t.get(card.id, 'shared', 'customFieldItems')
-                  .then(function(customFieldItems) {
-                    card.customFieldItems = customFieldItems || [];
-                    return card;
-                  });
+      // Define the board button capability: returns a button that opens the export popup
+      const boardButtonsCapability = (t, options) => {
+        return [{
+          icon: {
+            dark: ICON_URL,
+            light: ICON_URL
+          },
+          text: 'Export Cards',
+          condition: 'always',
+          callback: async function(t) {
+            try {
+              // If you need to open an external URL, sign it with t.signUrl(...)
+              // For example:
+              // let signedUrl = t.signUrl('https://yourdomain.com/export.html');
+              return t.popup({
+                title: 'Export Cards Data',
+                url: './export.html',
+                height: 500,  // Adjust height as needed
+                fullscreen: false
               });
-          });
+            } catch (error) {
+              console.error('Error in board button callback:', error);
+              return { error: true, message: error.message || 'An error occurred' };
+            }
+          }
+        }];
+      };
 
-          Promise.all(detailPromises).then(function(cards) {
-            // Step 2. Get board lists to map list IDs to names.
-            t.board('lists', ['lists'])
-            .then(function(boardData) {
-              var listMapping = {};
-              boardData.lists.forEach(function(list) {
-                listMapping[list.id] = list.name;
-              });
-
-              // Step 3. Get board's custom fields definitions (if available)
-              t.get('board', 'shared', 'customFields')
-              .then(function(boardCustomFields) {
-                var customFieldMapping = {};
-                if (boardCustomFields && boardCustomFields.length) {
-                  boardCustomFields.forEach(function(field) {
-                    customFieldMapping[field.id] = field.name;
-                  });
-                }
-
-                // Step 4. Build CSV rows.
-                var csvRows = [];
-                // Header row: standard fields plus the desired custom fields
-                var header = ['Card Name', 'List Name', 'Labels', 'Members'].concat(desiredCustomFields);
-                csvRows.push(header.join(','));
-
-                // Process each card.
-                cards.forEach(function(card) {
-                  var cardName = card.name || '';
-                  var listName = listMapping[card.idList] || '';
-                  // Join label names (using semicolon as delimiter)
-                  var labels = (card.labels || []).map(function(label) {
-                    return label.name;
-                  }).join(';');
-                  // For members, output the member IDs (expand with additional API calls if needed)
-                  var members = (card.idMembers || []).join(';');
-
-                  // Process custom fields for the card.
-                  var customFieldValues = {};
-                  card.customFieldItems.forEach(function(item) {
-                    // Use the board's mapping (if available) or fallback to the ID.
-                    var fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
-                    var value = '';
-                    if (item.value) {
-                      if (item.value.text) {
-                        value = item.value.text;
-                      } else if (item.value.number) {
-                        value = item.value.number;
-                      } else if (item.value.date) {
-                        value = item.value.date;
-                      }
-                    }
-                    customFieldValues[fieldName] = value;
-                  });
-
-                  // Get the values for each desired custom field (or empty string)
-                  var customValues = desiredCustomFields.map(function(field) {
-                    return customFieldValues[field] || '';
-                  });
-
-                  // Assemble the row
-                  var row = [cardName, listName, labels, members].concat(customValues);
-                  // Simple CSV escaping: wrap in quotes if needed.
-                  row = row.map(function(cell) {
-                    cell = cell || '';
-                    if (typeof cell === 'string' && (cell.indexOf(',') !== -1 || cell.indexOf('"') !== -1)) {
-                      cell = '"' + cell.replace(/"/g, '""') + '"';
-                    }
-                    return cell;
-                  });
-                  csvRows.push(row.join(','));
-                });
-
-                // Step 5. Create CSV content and trigger download.
-                var csvContent = csvRows.join('\n');
-                var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = 'trello_export.csv';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              });
+      // Initialize the Power-Up on the connector page.
+      TrelloPowerUp.initialize({
+        'board-buttons': boardButtonsCapability,
+        'authorization-status': async (t, options) => {
+          const authStatus = await t.get('member', 'private', 'authStatus');
+          return { authorized: !!authStatus };
+        },
+        'show-settings': async (t, options) => {
+          try {
+            return t.popup({
+              title: 'Export Settings',
+              url: './settings.html',
+              height: 200
             });
-          });
-        })
-        .catch(function(err) {
-          console.error('Error during export:', err);
-          t.alert({ message: 'Error exporting cards. Check the console for details.' });
-        });
+          } catch (error) {
+            console.error('Error showing settings:', error);
+            return { error: true, message: error.message };
+          }
+        }
+      }, {
+        appName: 'ServOS Export',
+        apiVersion: 1,
+        enableContext: true
       });
-    });
-  </script>
-</body>
+    </script>
+  </body>
 </html>
