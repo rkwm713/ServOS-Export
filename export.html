@@ -9,185 +9,211 @@
       body { font-family: sans-serif; margin: 20px; }
       #status { margin-top: 20px; }
       button { font-size: 1em; padding: 10px 15px; }
+      #authSection, #exportSection { margin-bottom: 20px; }
     </style>
   </head>
   <body>
     <h2>Export Cards Data</h2>
-    <p>
-      Click the button below to export your board’s cards (with their list, labels, members, and custom fields) as a CSV file.
-    </p>
-    <button id="exportBtn">Export Now</button>
-    <div id="status"></div>
+    <!-- Section shown when user must authorize the Power-Up -->
+    <div id="authSection" style="display:none;">
+      <p>Please authorize this Power-Up to access your board data.</p>
+      <button id="authBtn">Login with Trello</button>
+    </div>
+    <!-- Section shown once user is authorized -->
+    <div id="exportSection" style="display:none;">
+      <button id="exportBtn">Export Now</button>
+      <div id="status"></div>
+    </div>
 
     <script>
-      // When the Export button is clicked…
-      document.getElementById('exportBtn').addEventListener('click', function() {
-        // Disable the button and show status
-        this.disabled = true;
-        document.getElementById('status').innerText = 'Exporting...';
-
-        // Get the Power-Up context from the popup
+      (function() {
+        var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95'; // Your public API key; secret is NOT exposed.
         var t = TrelloPowerUp.iframe();
 
-        // Retrieve the board ID from the context (synchronously)
-        var context = t.getContext();
-        var boardId = context.board;
-
-        // Use your API key (provided) – note that the secret is not used here
-        var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95';
-
-        // For private boards you must supply a valid member token.
-        // Check if a token is stored; if not, prompt the user.
-        var token = localStorage.getItem('trelloToken');
-        if (!token) {
-          token = prompt("Enter your Trello token (get one at https://trello.com/app-key):");
-          if (token) {
-            localStorage.setItem('trelloToken', token);
-          } else {
-            document.getElementById('status').innerText = "A token is required for this export.";
-            return;
+        /**
+         * Retrieves the Trello token from localStorage or from the URL hash (after OAuth redirect).
+         */
+        function getToken() {
+          var token = localStorage.getItem('trelloToken');
+          if (!token && window.location.hash) {
+            // Expected format: #token=YOUR_TOKEN
+            var hash = window.location.hash.substring(1); // Remove the '#' character
+            var params = new URLSearchParams(hash);
+            token = params.get('token');
+            if (token) {
+              localStorage.setItem('trelloToken', token);
+              // Clean up URL hash for neatness.
+              window.location.hash = '';
+            }
           }
+          return token;
         }
 
-        // Build URLs for REST API calls
-        var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
-        var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
-        var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=username&key=${apiKey}&token=${token}`;
-        var customFieldsURL = `https://api.trello.com/1/boards/${boardId}/customFields?key=${apiKey}&token=${token}`;
+        /**
+         * Initiates the OAuth flow by redirecting the user to Trello’s authorization page.
+         * On successful authorization, Trello will redirect back with the token in the URL hash.
+         */
+        function initiateOAuth() {
+          var returnUrl = encodeURIComponent(window.location.href);
+          var authUrl = 'https://trello.com/1/authorize' +
+                        '?expiration=never' +
+                        '&name=Export%20Cards%20Power-Up' +
+                        '&scope=read' +
+                        '&response_type=token' +
+                        '&key=' + apiKey +
+                        '&return_url=' + returnUrl;
+          window.location.href = authUrl;
+        }
 
-        // Fetch lists, cards, members, and custom fields concurrently
-        Promise.all([
-          fetch(listsURL).then(res => res.json()),
-          fetch(cardsURL).then(res => res.json()),
-          fetch(membersURL).then(res => res.json()),
-          fetch(customFieldsURL).then(res => res.json())
-        ]).then(function([lists, cards, members, customFields]) {
-          // Create a mapping of list ID → list name
-          var listMap = {};
-          lists.forEach(function(list) {
-            listMap[list.id] = list.name;
+        // Check if we already have a valid token.
+        var token = getToken();
+        if (!token) {
+          // Show the authorization UI.
+          document.getElementById('authSection').style.display = 'block';
+          document.getElementById('authBtn').addEventListener('click', function() {
+            initiateOAuth();
           });
+        } else {
+          // Token is present; show the export UI.
+          document.getElementById('exportSection').style.display = 'block';
+          document.getElementById('exportBtn').addEventListener('click', function() {
+            this.disabled = true;
+            document.getElementById('status').innerText = 'Exporting...';
 
-          // Create a mapping of member ID → username
-          var memberMap = {};
-          members.forEach(function(member) {
-            memberMap[member.id] = member.username;
-          });
+            // Get board context synchronously.
+            var context = t.getContext();
+            var boardId = context.board;
 
-          // Create a mapping of custom field ID → custom field name
-          var customFieldMap = {};
-          customFields.forEach(function(field) {
-            customFieldMap[field.id] = field.name;
-          });
+            // Build REST API URLs to fetch lists, cards, members, and custom fields.
+            var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
+            var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
+            var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=username&key=${apiKey}&token=${token}`;
+            var customFieldsURL = `https://api.trello.com/1/boards/${boardId}/customFields?key=${apiKey}&token=${token}`;
 
-          // Define the desired custom fields (exact names must match your board’s custom fields)
-          var desiredCustomFields = [
-            "W.O. #",
-            "Attacher W.O. #",
-            "Katapult",
-            "Staking Site Count",
-            "TT Site Count",
-            "TT Start",
-            "Sent to Landon",
-            "TT Received Back",
-            "ArcFM Start",
-            "ArcFM Finished",
-            "Sent to Damon",
-            "Sent to Scheduling",
-            "Added to Schedule",
-            "Construction Started",
-            "Construction Completed",
-            "Pre-ArcFM Started",
-            "Pre-ArcFM Completed",
-            "Priority",
-            "OneDrive Link"
-          ];
+            Promise.all([
+              fetch(listsURL).then(res => res.json()),
+              fetch(cardsURL).then(res => res.json()),
+              fetch(membersURL).then(res => res.json()),
+              fetch(customFieldsURL).then(res => res.json())
+            ]).then(function([lists, cards, members, customFields]) {
+              // Create mappings for lists, members, and custom fields.
+              var listMap = {};
+              lists.forEach(function(list) { listMap[list.id] = list.name; });
+              var memberMap = {};
+              members.forEach(function(member) { memberMap[member.id] = member.username; });
+              var customFieldMap = {};
+              customFields.forEach(function(field) { customFieldMap[field.id] = field.name; });
 
-          // Map desired custom field names to their corresponding custom field IDs
-          var desiredFieldIdMap = {};
-          for (var id in customFieldMap) {
-            if (desiredCustomFields.indexOf(customFieldMap[id]) > -1) {
-              desiredFieldIdMap[customFieldMap[id]] = id;
-            }
-          }
+              // Define the desired custom fields (names must match exactly your board’s custom fields).
+              var desiredCustomFields = [
+                "W.O. #",
+                "Attacher W.O. #",
+                "Katapult",
+                "Staking Site Count",
+                "TT Site Count",
+                "TT Start",
+                "Sent to Landon",
+                "TT Received Back",
+                "ArcFM Start",
+                "ArcFM Finished",
+                "Sent to Damon",
+                "Sent to Scheduling",
+                "Added to Schedule",
+                "Construction Started",
+                "Construction Completed",
+                "Pre-ArcFM Started",
+                "Pre-ArcFM Completed",
+                "Priority",
+                "OneDrive Link"
+              ];
 
-          // Start building CSV rows; first, add the header row.
-          var csvRows = [];
-          var header = ["Card Name", "List Name", "Labels", "Members"].concat(desiredCustomFields);
-          csvRows.push(header.join(','));
+              // Map the desired custom field names to their IDs.
+              var desiredFieldIdMap = {};
+              for (var id in customFieldMap) {
+                if (desiredCustomFields.indexOf(customFieldMap[id]) > -1) {
+                  desiredFieldIdMap[customFieldMap[id]] = id;
+                }
+              }
 
-          // Process each card
-          cards.forEach(function(card) {
-            var row = [];
-            // Card Name (escape quotes)
-            row.push('"' + (card.name || '').replace(/"/g, '""') + '"');
-            // List Name (look up by card.idList)
-            var listName = listMap[card.idList] || '';
-            row.push('"' + listName.replace(/"/g, '""') + '"');
-            // Labels (join label names or colors with a semicolon)
-            var labels = (card.labels || []).map(function(label) {
-              return label.name || label.color;
-            }).join('; ');
-            row.push('"' + labels.replace(/"/g, '""') + '"');
-            // Members (map member IDs to usernames)
-            var membersStr = (card.idMembers || []).map(function(id) {
-              return memberMap[id] || id;
-            }).join('; ');
-            row.push('"' + membersStr.replace(/"/g, '""') + '"');
+              // Build the CSV rows (first row is the header).
+              var csvRows = [];
+              var header = ["Card Name", "List Name", "Labels", "Members"].concat(desiredCustomFields);
+              csvRows.push(header.join(','));
 
-            // Gather custom field values for this card.
-            // The card.customFieldItems array (if present) holds the custom field data.
-            var customValues = {};
-            if (card.customFieldItems) {
-              card.customFieldItems.forEach(function(item) {
-                var cfId = item.idCustomField;
-                // If this custom field is one of the desired fields…
-                for (var fieldName in desiredFieldIdMap) {
-                  if (desiredFieldIdMap[fieldName] === cfId) {
-                    var val = '';
-                    if (item.value) {
-                      // Depending on the field type the value may be in .text, .number, or .date.
-                      if (item.value.text) { 
-                        val = item.value.text; 
-                      } else if (item.value.number) { 
-                        val = item.value.number; 
-                      } else if (item.value.date) { 
-                        val = item.value.date; 
-                      } else {
-                        val = JSON.stringify(item.value);
+              // Process each card.
+              cards.forEach(function(card) {
+                var row = [];
+                // Escape quotes in the card name.
+                row.push('"' + (card.name || '').replace(/"/g, '""') + '"');
+                // Lookup the list name.
+                var listName = listMap[card.idList] || '';
+                row.push('"' + listName.replace(/"/g, '""') + '"');
+                // Process labels.
+                var labels = (card.labels || []).map(function(label) {
+                  return label.name || label.color;
+                }).join('; ');
+                row.push('"' + labels.replace(/"/g, '""') + '"');
+                // Process members.
+                var membersStr = (card.idMembers || []).map(function(id) {
+                  return memberMap[id] || id;
+                }).join('; ');
+                row.push('"' + membersStr.replace(/"/g, '""') + '"');
+
+                // Process custom fields.
+                var customValues = {};
+                if (card.customFieldItems) {
+                  card.customFieldItems.forEach(function(item) {
+                    var cfId = item.idCustomField;
+                    // For each desired custom field, check if this item matches.
+                    for (var fieldName in desiredFieldIdMap) {
+                      if (desiredFieldIdMap[fieldName] === cfId) {
+                        var val = '';
+                        if (item.value) {
+                          if (item.value.text) { 
+                            val = item.value.text; 
+                          } else if (item.value.number) { 
+                            val = item.value.number; 
+                          } else if (item.value.date) { 
+                            val = item.value.date; 
+                          } else {
+                            val = JSON.stringify(item.value);
+                          }
+                        }
+                        customValues[fieldName] = val;
                       }
                     }
-                    customValues[fieldName] = val;
-                  }
+                  });
                 }
+                // Add each desired custom field value (or blank if missing).
+                desiredCustomFields.forEach(function(field) {
+                  var value = customValues[field] || '';
+                  row.push('"' + value.replace(/"/g, '""') + '"');
+                });
+
+                csvRows.push(row.join(','));
               });
-            }
-            // For each desired custom field, add its value (or blank if not present)
-            desiredCustomFields.forEach(function(field) {
-              var value = customValues[field] || '';
-              row.push('"' + value.replace(/"/g, '""') + '"');
+
+              // Combine all rows into a CSV string.
+              var csvContent = csvRows.join('\n');
+
+              // Create a Blob from the CSV and generate a temporary download link.
+              var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement('a');
+              a.href = url;
+              a.download = 'trello_cards_export.csv';
+              a.innerText = 'Download CSV';
+
+              // Display the download link.
+              document.getElementById('status').innerHTML = '';
+              document.getElementById('status').appendChild(a);
+            }).catch(function(err) {
+              console.error(err);
+              document.getElementById('status').innerText = 'Error: ' + err.message;
             });
-
-            csvRows.push(row.join(','));
           });
-
-          // Combine all rows into a CSV string.
-          var csvContent = csvRows.join('\n');
-
-          // Create a Blob from the CSV string and a temporary download link.
-          var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'trello_cards_export.csv';
-          a.innerText = 'Download CSV';
-          document.getElementById('status').innerHTML = ''; // Clear status and show download link
-          document.getElementById('status').appendChild(a);
-        }).catch(function(err) {
-          console.error(err);
-          document.getElementById('status').innerText = 'Error: ' + err.message;
-        });
-      });
+        }
+      })();
     </script>
   </body>
 </html>
