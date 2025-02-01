@@ -39,10 +39,10 @@
       // - members (to know who is assigned to each card)
       // - customFields (to know the custom fields on the board)
       Promise.all([
-        t.board('cards'),
-        t.board('lists'),
-        t.board('members'),
-        t.board('customFields')
+        t.board('cards', 'read'),
+        t.board('lists', 'read'),
+        t.board('members', 'read'),
+        t.board('customFields', 'read')
       ]).then(function(results) {
         var cards = results[0];
         var lists = results[1];
