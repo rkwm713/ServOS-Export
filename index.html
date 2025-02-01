@@ -1,62 +1,71 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Trello Export Power-Up</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Load the Trello Power-Up library -->
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
 </head>
 <body>
   <script>
-    var CAPABILITY_NAMES = {
-      'board-buttons': function(t, options) {
-        return [{
-          icon: {
-            dark: 'https://rkwm713.github.io/ServOS-Export/icon.png',
-            light: 'https://rkwm713.github.io/ServOS-Export/icon.png'
-          },
-          text: 'Export Cards',
-          callback: function(t) {
+    // URL for your custom icon
+    const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
+
+    // Utility function for logging and handling errors
+    const handleError = (error) => {
+      console.error('Power-Up Error:', error);
+      // Optionally, you can display an alert or custom UI feedback here
+      return { error: true, message: error.message || 'An unexpected error occurred' };
+    };
+
+    // Define the board button capability to open the export popup
+    const boardButtonsCapability = (t, options) => {
+      return [{
+        icon: {
+          dark: ICON_URL,
+          light: ICON_URL
+        },
+        text: 'Export Cards',
+        condition: 'always',
+        callback: async function(t) {
+          try {
             return t.popup({
               title: 'Export Cards Data',
               url: './export.html',
-              height: 400
+              height: 500,  // Increased height for better visibility
+              fullscreen: false
             });
+          } catch (error) {
+            handleError(error);
           }
-        }];
-      }
+        }
+      }];
     };
 
+    // Initialize the Trello Power-Up with enhanced capabilities
     TrelloPowerUp.initialize({
-      // Start with the basic capabilities your Power-Up needs
-      'board-buttons': CAPABILITY_NAMES['board-buttons'],
-      'card-buttons': function(t, options) {
-        return [];
+      'board-buttons': boardButtonsCapability,
+      'authorization-status': async (t, options) => {
+        const authStatus = await t.get('member', 'private', 'authStatus');
+        return { authorized: !!authStatus };
       },
-      'card-badges': function(t, options) {
-        return [];
-      },
-      'card-detail-badges': function(t, options) {
-        return [];
-      },
-      'show-settings': function(t, options) {
-        return t.popup({
-          title: 'Settings',
-          url: './settings.html',
-          height: 184
-        });
+      'show-settings': async (t, options) => {
+        try {
+          // Make sure to create a settings.html if you use this feature.
+          return t.popup({
+            title: 'Export Settings',
+            url: './settings.html',
+            height: 200
+          });
+        } catch (error) {
+          handleError(error);
+        }
       }
     }, {
-      // Additional initialization options
-     // appKey: 'your-app-key-here', // Replace with your actual app key
-     // appName: 'Export Cards Power-Up',
-      //apiEndpoint: 'https://api.trello.com',
-      //authEndpoint: 'https://trello.com',
-     // requestWithContext: function(t, opts) {
-     //   return t.arg('member', 'id')
-        //  .then(function(memberId) {
-        //    return opts.url;
-          });
-      }
+      appName: 'ServOS Export',
+      apiVersion: 1,
+      enableContext: true
     });
   </script>
 </body>
