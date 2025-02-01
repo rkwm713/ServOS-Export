@@ -83,7 +83,8 @@
             // Get board context synchronously.
             var context = t.getContext();
             var boardId = context.board;
-
+            
+            
             // Build REST API URLs to fetch lists, cards, members, and custom fields.
             var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
             var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
@@ -139,7 +140,21 @@
               var csvRows = [];
               var header = ["Card Name", "List Name", "Labels", "Members"].concat(desiredCustomFields);
               csvRows.push(header.join(','));
-
+              
+              // Helper function to convert ISO dates to MM-DD-YYYY format.
+              function formatDate(isoDate) {
+                const date = new Date(isoDate);
+                if (isNaN(date)) {
+                  return isoDate;
+                }
+                let month = date.getMonth() + 1; // getMonth() returns 0-11
+                let day = date.getDate();
+                const year = date.getFullYear();
+                // Pad month and day with leading zeros if needed.
+                month = month < 10 ? '0' + month : month;
+                day = day < 10 ? '0' + day : day;
+                return `${month}-${day}-${year}`;
+              
               // Process each card.
               cards.forEach(function(card) {
                 var row = [];
@@ -174,7 +189,7 @@
                           } else if (item.value.number) { 
                             val = item.value.number; 
                           } else if (item.value.date) { 
-                            val = item.value.date; 
+                            val = formatDate(item.value.date); 
                           } else {
                             val = JSON.stringify(item.value);
                           }
