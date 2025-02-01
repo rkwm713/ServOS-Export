@@ -117,6 +117,7 @@
     async function getBoardData() {
       let cards = [], members = [], lists = [], customFields = [];
       
+      // Fetch cards
       try {
         cards = await t.cards('all');
         console.log('Cards fetched:', cards);
@@ -124,6 +125,7 @@
         console.error("Failed to fetch cards (t.cards('all')):", error);
       }
       
+      // Fetch members and ensure we have an array
       try {
         let membersResult = await t.board('members');
         console.log('Raw members result:', membersResult);
@@ -140,12 +142,16 @@
         members = [];
       }
       
+      // Fetch lists and ensure we have an array
       try {
         let listsResult = await t.board('lists');
         console.log('Raw lists result:', listsResult);
-        if (Array.isArray(listsResult)) {
+        if (listsResult === undefined || listsResult === null) {
+          console.warn("Lists result is null or undefined; setting lists to []");
+          lists = [];
+        } else if (Array.isArray(listsResult)) {
           lists = listsResult;
-        } else if (listsResult && typeof listsResult === 'object') {
+        } else if (typeof listsResult === 'object') {
           lists = Object.values(listsResult);
         } else {
           lists = [];
@@ -156,6 +162,7 @@
         lists = [];
       }
       
+      // Fetch custom fields and ensure we have an array
       try {
         let customFieldsResult = await t.board('customFields');
         console.log('Raw custom fields result:', customFieldsResult);
@@ -208,11 +215,11 @@
         }
 
         // Build mapping: custom field ID → custom field name
-        // NOTE: Many custom field objects may use "idCustomField" rather than "id"
+        // NOTE: Many custom field objects use "idCustomField" rather than "id"
         const customFieldMapping = {};
         if (Array.isArray(customFields)) {
           customFields.forEach(cf => {
-            const cfId = cf.idCustomField || cf.id;  // Use idCustomField if available
+            const cfId = cf.idCustomField || cf.id;  // Prefer idCustomField if available
             customFieldMapping[cfId] = cf.name;
           });
         } else {
@@ -248,4 +255,68 @@
           };
         });
       } catch (error) {
-        throw new Error('Failed to fe
+        throw new Error('Failed to fetch card data: ' + error.message);
+      }
+    }
+
+    /**
+     * Helper: Determine the header order for export.
+     * Fixed headers are: cardname, cardlistname, cardlabelnames, cardmemberfullnames.
+     * Any additional keys (custom fields) are appended.
+     */
+    function determineHeaderOrder(cards) {
+      const fixedHeaders = ['cardname', 'cardlistname', 'cardlabelnames', 'cardmemberfullnames'];
+      const extraHeadersSet = new Set();
+      cards.forEach(card => {
+        Object.keys(card).forEach(key => {
+          if (!fixedHeaders.includes(key)) {
+            extraHeadersSet.add(key);
+          }
+        });
+      });
+      return fixedHeaders.concat(Array.from(extraHeadersSet));
+    }
+
+    // Export card data to an Excel file
+    async function exportToExcel() {
+      try {
+        showLoading(true);
+        const cards = await getCardData();
+        const headerOrder = determineHeaderOrder(cards);
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
+        XLSX.writeFile(workbook, "trello-cards.xlsx");
+        showLoading(false);
+      } catch (error) {
+        showLoading(false);
+        showError(error.message);
+      }
+    }
+
+    // Export card data to a CSV file
+    async function exportToCSV() {
+      try {
+        showLoading(true);
+        const cards = await getCardData();
+        const headerOrder = determineHeaderOrder(cards);
+        const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
+        const csv = XLSX.utils.sheet_to_csv(worksheet);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'trello-cards.csv';
+        link.click();
+        showLoading(false);
+      } catch (error) {
+        showLoading(false);
+        showError(error.message);
+      }
+    }
+
+    // Attach event listeners to export buttons
+    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+    document.getElementById('exportCSV').addEventListener('click', exportToCSV);
+  </script>
+</body>
+</html>
