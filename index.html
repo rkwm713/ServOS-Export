@@ -9,17 +9,16 @@
   </head>
   <body>
     <script>
-      // URL for your custom icon (ensure it’s hosted via HTTPS)
+      // URL for your custom icon (must be HTTPS)
       const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
 
       // Utility function for error logging and handling
       const handleError = (error) => {
         console.error('Power-Up Error:', error);
-        // Optionally, you can display UI feedback here
         return { error: true, message: error.message || 'An unexpected error occurred' };
       };
 
-      // Board button capability: returns a button that opens the export popup
+      // Define the board-button capability to open the export popup
       const boardButtonsCapability = (t, options) => {
         return [{
           icon: {
@@ -33,7 +32,7 @@
               return t.popup({
                 title: 'Export Cards Data',
                 url: './export.html',
-                height: 500,  // Adjust popup height for visibility
+                height: 500,  // Adjust popup height as needed
                 fullscreen: false
               });
             } catch (error) {
@@ -43,7 +42,7 @@
         }];
       };
 
-      // Initialize the Power-Up on the connector page
+      // Initialize the Power-Up (only on the connector page)
       TrelloPowerUp.initialize({
         'board-buttons': boardButtonsCapability,
         'authorization-status': async (t, options) => {
@@ -52,7 +51,7 @@
         },
         'show-settings': async (t, options) => {
           try {
-            // If you want to add settings, create a settings.html page.
+            // Create settings.html if you wish to add settings
             return t.popup({
               title: 'Export Settings',
               url: './settings.html',
