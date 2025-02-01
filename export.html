@@ -95,17 +95,17 @@
     </div>
 
     <script>
-      // Initialize the Power-Up for pages that are not the connector.
+      // Initialize Trello Power-Up for popup pages.
       var t = TrelloPowerUp.iframe();
 
-      // Utility: Display error messages
+      // Utility: Display error messages in the UI.
       const showError = (message) => {
         const errorDiv = document.getElementById('errorMessage');
         errorDiv.textContent = message;
         errorDiv.style.display = 'block';
       };
 
-      // Utility: Toggle loading indicator
+      // Utility: Show or hide the loading indicator.
       const showLoading = (isVisible) => {
         document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
       };
@@ -159,7 +159,7 @@
           lists = [];
         }
         
-        // Fetch custom fields and ensure we have an array
+        // Fetch custom fields and ensure we have an array.
         try {
           let customFieldsResult = await t.board('customFields');
           console.log('Raw custom fields result:', customFieldsResult);
@@ -181,75 +181,91 @@
 
       /**
        * Process the fetched data and build an export object for each card.
-       * The keys are:
-       * - cardname
-       * - cardlistname (looked up via lists)
-       * - cardlabelnames
-       * - cardmemberfullnames (via members)
-       * - plus any custom fields (using the custom field's name)
+       * The export object contains fixed fields:
+       *   "Card Name", "List Name", "Labels", "Members"
+       * and custom fields in a fixed order.
        */
       async function getCardData() {
         try {
           const { cards, members, lists, customFields } = await getBoardData();
 
-          // Build member mapping: id → full name
-          const memberMapping = {};
-          if (Array.isArray(members)) {
-            members.forEach(member => {
-              memberMapping[member.id] = member.fullName || member.username || "";
-            });
-          } else {
-            console.warn("Members is not an array, received:", members);
-          }
+          // Fixed header mappings.
+          const fixedHeaders = {
+            "Card Name": card => card.name,
+            "List Name": card => lists.find(l => l.id === card.idList)?.name || "",
+            "Labels": card => card.labels ? card.labels.map(l => l.name).join(', ') : "",
+            "Members": card => card.idMembers ? card.idMembers.map(id => {
+              const member = members.find(m => m.id === id);
+              return member ? (member.fullName || member.username) : "";
+            }).join(', ') : ""
+          };
 
-          // Build list mapping: id → list name
-          const listMapping = {};
-          if (Array.isArray(lists)) {
-            lists.forEach(list => {
-              listMapping[list.id] = list.name;
-            });
-          } else {
-            console.warn("Lists is not an array, received:", lists);
-          }
+          // Define desired custom fields (in the order you want)
+          const desiredCustomFields = [
+            "W.O. #",
+            "Attacher W.O. #",
+            "Katapult",
+            "Staking Site Count",
+            "TT Site Count",
+            "TT Start",
+            "Sent to Landon",
+            "TT Received Back",
+            "ArcFM Start",
+            "ArcFM Finished",
+            "Sent to Damon",
+            "Sent to Scheduling",
+            "Added to Schedule",
+            "Construction Started",
+            "Construction Completed",
+            "Pre-ArcFM Started",
+            "Pre-ArcFM Completed",
+            "Priority",
+            "OneDrive Link"
+          ];
 
-          // Build custom field mapping: use idCustomField if available, else id
-          const customFieldMapping = {};
+          // Build a mapping from custom field name to its ID
+          const customFieldNameToId = {};
           if (Array.isArray(customFields)) {
             customFields.forEach(cf => {
+              // Many custom field definitions use "idCustomField" instead of "id"
               const cfId = cf.idCustomField || cf.id;
-              customFieldMapping[cfId] = cf.name;
+              if (cf.name) {
+                customFieldNameToId[cf.name] = cfId;
+              }
             });
-          } else {
-            console.warn("Custom fields is not an array, received:", customFields);
           }
 
-          // For each card, build an object with fixed headers and any custom fields
+          // For each card, build the export object.
+          // Start with fixed columns, then add each desired custom field.
           return cards.map(card => {
-            let cardCustomFields = {};
-            if (card.customFieldItems) {
-              card.customFieldItems.forEach(item => {
-                // Use the custom field mapping to look up the proper header name
-                const fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
-                let value = '';
-                if (item.value) {
-                  if (item.value.text) {
-                    value = item.value.text;
-                  } else if (item.value.number) {
-                    value = item.value.number;
-                  } else if (item.value.date) {
-                    value = new Date(item.value.date).toLocaleString();
+            let exportObject = {};
+
+            // Fixed fields:
+            Object.keys(fixedHeaders).forEach(key => {
+              exportObject[key] = fixedHeaders[key](card);
+            });
+
+            // Custom fields: loop over desiredCustomFields and get the value
+            // from card.customFieldItems (if exists) that matches the ID in our mapping.
+            desiredCustomFields.forEach(fieldName => {
+              let value = "";
+              const cfId = customFieldNameToId[fieldName];
+              if (cfId && card.customFieldItems) {
+                const cfItem = card.customFieldItems.find(item => item.idCustomField === cfId);
+                if (cfItem && cfItem.value) {
+                  if (cfItem.value.text) {
+                    value = cfItem.value.text;
+                  } else if (cfItem.value.number) {
+                    value = cfItem.value.number;
+                  } else if (cfItem.value.date) {
+                    value = new Date(cfItem.value.date).toLocaleString();
                   }
                 }
-                cardCustomFields[fieldName] = value;
-              });
-            }
-            return {
-              cardname: card.name,
-              cardlistname: listMapping[card.idList] || '',
-              cardlabelnames: card.labels ? card.labels.map(l => l.name).join(', ') : '',
-              cardmemberfullnames: card.idMembers ? card.idMembers.map(id => memberMapping[id]).join(', ') : '',
-              ...cardCustomFields
-            };
+              }
+              exportObject[fieldName] = value;
+            });
+
+            return exportObject;
           });
         } catch (error) {
           throw new Error('Failed to fetch card data: ' + error.message);
@@ -258,20 +274,32 @@
 
       /**
        * Determine header order for export.
-       * Fixed headers: cardname, cardlistname, cardlabelnames, cardmemberfullnames.
-       * Append any additional keys from custom fields.
+       * Fixed headers (in order) followed by desired custom fields (in order).
        */
-      function determineHeaderOrder(cards) {
-        const fixedHeaders = ['cardname', 'cardlistname', 'cardlabelnames', 'cardmemberfullnames'];
-        const extraHeadersSet = new Set();
-        cards.forEach(card => {
-          Object.keys(card).forEach(key => {
-            if (!fixedHeaders.includes(key)) {
-              extraHeadersSet.add(key);
-            }
-          });
-        });
-        return fixedHeaders.concat(Array.from(extraHeadersSet));
+      function determineHeaderOrder() {
+        const fixedHeaders = ["Card Name", "List Name", "Labels", "Members"];
+        const desiredCustomFields = [
+          "W.O. #",
+          "Attacher W.O. #",
+          "Katapult",
+          "Staking Site Count",
+          "TT Site Count",
+          "TT Start",
+          "Sent to Landon",
+          "TT Received Back",
+          "ArcFM Start",
+          "ArcFM Finished",
+          "Sent to Damon",
+          "Sent to Scheduling",
+          "Added to Schedule",
+          "Construction Started",
+          "Construction Completed",
+          "Pre-ArcFM Started",
+          "Pre-ArcFM Completed",
+          "Priority",
+          "OneDrive Link"
+        ];
+        return fixedHeaders.concat(desiredCustomFields);
       }
 
       // Export card data to an Excel file
@@ -279,7 +307,7 @@
         try {
           showLoading(true);
           const cards = await getCardData();
-          const headerOrder = determineHeaderOrder(cards);
+          const headerOrder = determineHeaderOrder();
           const workbook = XLSX.utils.book_new();
           const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
           XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
@@ -296,7 +324,7 @@
         try {
           showLoading(true);
           const cards = await getCardData();
-          const headerOrder = determineHeaderOrder(cards);
+          const headerOrder = determineHeaderOrder();
           const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
           const csv = XLSX.utils.sheet_to_csv(worksheet);
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
