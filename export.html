@@ -1,22 +1,40 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>Export Cards Data</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Load Trello Power-Up library -->
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  <!-- Load XLSX library for Excel/CSV export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       padding: 20px;
       max-width: 1200px;
       margin: 0 auto;
+      background-color: #f4f5f7;
     }
     
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
     h1 {
-      color: #333;
+      color: #172b4d;
       margin-bottom: 20px;
     }
     
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
     button {
       background-color: #0079BF;
       color: white;
@@ -25,214 +43,142 @@
       border-radius: 3px;
       cursor: pointer;
       font-size: 14px;
-      margin-bottom: 20px;
+      transition: background-color 0.2s;
     }
     
     button:hover {
       background-color: #026AA7;
     }
-    
-    pre {
-      background: #f5f5f5;
-      padding: 15px;
-      border-radius: 4px;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    
-    #downloadContainer {
-      margin-top: 20px;
-    }
-    
-    #downloadContainer a {
-      background-color: #5AAC44;
-      color: white;
-      text-decoration: none;
-      padding: 10px 20px;
-      border-radius: 3px;
-      display: inline-block;
-    }
-    
-    #downloadContainer a:hover {
-      background-color: #519839;
-    }
-    
-    .error {
-      color: #D0021B;
-      padding: 10px;
-      background-color: #FFE9E9;
-      border-radius: 3px;
-      margin: 10px 0;
+
+    button:disabled {
+      background-color: #97a0af;
+      cursor: not-allowed;
     }
     
     .loading {
-      color: #666;
-      font-style: italic;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #0079BF;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error-message {
+      color: #eb5a46;
+      padding: 10px;
+      background: #ffebe6;
+      border-radius: 3px;
+      margin: 10px 0;
+      display: none;
+    }
+
+    #downloadContainer {
+      margin-top: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>Export Cards Data</h1>
-  <p>Click the button below to generate and download your CSV file.</p>
-  <button id="exportBtn">Generate CSV</button>
-  <pre id="output"></pre>
-  <div id="downloadContainer"></div>
+  <div class="container">
+    <h1>Export Cards</h1>
+    <div class="error-message" id="errorMessage"></div>
+    <div class="button-group">
+      <button id="exportExcel">Export to Excel</button>
+      <button id="exportCSV">Export to CSV</button>
+    </div>
+    <div class="loading" id="loading">
+      <span>Exporting...</span>
+      <div class="spinner"></div>
+    </div>
+    <div id="downloadContainer"></div>
+  </div>
 
   <script>
-    // Initialize Trello Power-Up
+    // Initialize the Trello Power-Up iframe communication
     var t = TrelloPowerUp.iframe();
+    
+    // Display an error message in the UI
+    const showError = (message) => {
+      const errorDiv = document.getElementById('errorMessage');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+    };
 
-    // Helper function to safely extract custom field values
-    function extractCustomFieldValue(item) {
-      try {
-        if (!item || !item.value) return '';
-        const { text, number, date } = item.value;
-        return text || number || date || '';
-      } catch (err) {
-        console.error('Error extracting custom field value:', err);
-        return '';
-      }
-    }
+    // Toggle the loading indicator
+    const showLoading = (isVisible) => {
+      document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
+    };
 
-    // Main export function with error handling
-    async function exportData() {
-      const outputElement = document.getElementById('output');
-      const downloadContainer = document.getElementById('downloadContainer');
-      
+    // Fetch card data from the board with error handling
+    async function getCardData() {
       try {
-        // Show loading state
-        outputElement.textContent = 'Loading data...';
-        outputElement.className = 'loading';
-        
-        // Fetch all required data
-        const [cards, lists, members, customFields] = await Promise.all([
-          t.board('cards', 'read'),
-          t.board('lists', 'read'),
-          t.board('members', 'read'),
-          t.board('customFields', 'read')
-        ]);
-        
-        // Validate data
-        if (!cards || !lists || !members || !customFields) {
-          throw new Error('Failed to fetch required data from Trello');
-        }
-        
-        // Create custom fields mapping
-        const customFieldMapping = {};
-        const customFieldsArray = Array.isArray(customFields) ? customFields : Object.values(customFields);
-        customFieldsArray.forEach(cf => {
-          if (cf && cf.name && cf.id) {
-            customFieldMapping[cf.name] = cf.id;
-          }
-        });
-        
-        // Define expected custom fields
-        const expectedCustomFields = [
-          'W.O. #',
-          'Attacher W.O. #',
-          'OneDrive Link',
-          'Katapult',
-          'Staking Site Count',
-          'TT Site Count',
-          'TT Start',
-          'Sent to Landon',
-          'TT Received Back',
-          'ArcFM Start',
-          'ArcFM Finished',
-          'Sent to Damon',
-          'Sent to Scheduling',
-          'Added to Schedule',
-          'Construction Started',
-          'Construction Completed',
-          'Pre-ArcFM Started',
-          'Pre-ArcFM Completed'
-        ];
-        
-        // Create CSV header
-        const header = ['List Name', 'Card Name', 'Members', 'Labels', ...expectedCustomFields];
-        const csvRows = [header.join(',')];
-        
-        // Process cards
-        Object.entries(cards).forEach(([cardId, card]) => {
-          if (!card) return;
-          
-          // Get list name
-          const list = lists[card.idList];
-          const listName = list ? list.name : '';
-          
-          // Get member names
-          const memberNames = (card.idMembers || [])
-            .map(memberId => {
-              const member = members[memberId];
-              return member ? member.fullName : '';
-            })
-            .filter(Boolean)
-            .join('; ');
-          
-          // Get labels
-          const labelNames = (card.labels || [])
-            .map(label => label.name || label.color)
-            .filter(Boolean)
-            .join('; ');
-          
-          // Process custom fields
-          const customValues = expectedCustomFields.map(fieldName => {
-            const fieldId = customFieldMapping[fieldName];
-            if (!fieldId || !card.customFieldItems) return '""';
-            
-            const fieldItem = card.customFieldItems.find(item => 
-              item.idCustomField === fieldId
-            );
-            return fieldItem ? `"${extractCustomFieldValue(fieldItem)}"` : '""';
-          });
-          
-          // Create row with proper escaping
-          const row = [
-            `"${listName.replace(/"/g, '""')}"`,
-            `"${(card.name || '').replace(/"/g, '""')}"`,
-            `"${memberNames.replace(/"/g, '""')}"`,
-            `"${labelNames.replace(/"/g, '""')}"`,
-            ...customValues
-          ];
-          
-          csvRows.push(row.join(','));
-        });
-        
-        const csvContent = csvRows.join('\n');
-        
-        // Display output
-        outputElement.className = '';
-        outputElement.textContent = csvContent;
-        
-        // Create download link
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const downloadLink = document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = 'trello_cards_export.csv';
-        downloadLink.textContent = 'Download CSV';
-        
-        // Update download container
-        downloadContainer.innerHTML = '';
-        downloadContainer.appendChild(downloadLink);
-        
+        const cards = await t.cards('all');
+        // Process each card to extract necessary fields
+        return cards.map(card => ({
+          id: card.id,
+          name: card.name,
+          description: card.desc,
+          url: card.url,
+          due: card.due ? new Date(card.due).toLocaleString() : '',
+          list: card.list ? card.list.name : '',
+          labels: card.labels ? card.labels.map(l => l.name).join(', ') : ''
+        }));
       } catch (error) {
-        console.error('Export failed:', error);
-        outputElement.className = 'error';
-        outputElement.textContent = `Export failed: ${error.message}. Please check the console for more details.`;
+        throw new Error('Failed to fetch card data: ' + error.message);
       }
     }
 
-    // Add event listener
-    document.getElementById('exportBtn').addEventListener('click', () => {
-      exportData().catch(err => {
-        console.error('Error in export:', err);
-        const outputElement = document.getElementById('output');
-        outputElement.className = 'error';
-        outputElement.textContent = 'Export failed. Please check the console for details.';
-      });
-    });
+    // Export card data to an Excel file
+    async function exportToExcel() {
+      try {
+        showLoading(true);
+        const cards = await getCardData();
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(cards);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
+        XLSX.writeFile(workbook, "trello-cards.xlsx");
+        showLoading(false);
+      } catch (error) {
+        showLoading(false);
+        showError(error.message);
+      }
+    }
+
+    // Export card data to a CSV file
+    async function exportToCSV() {
+      try {
+        showLoading(true);
+        const cards = await getCardData();
+        const worksheet = XLSX.utils.json_to_sheet(cards);
+        const csv = XLSX.utils.sheet_to_csv(worksheet);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'trello-cards.csv';
+        link.click();
+        showLoading(false);
+      } catch (error) {
+        showLoading(false);
+        showError(error.message);
+      }
+    }
+
+    // Attach event listeners to the export buttons
+    document.getElementById('exportExcel').addEventListener('click', exportToExcel);
+    document.getElementById('exportCSV').addEventListener('click', exportToCSV);
   </script>
 </body>
 </html>
+
