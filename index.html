@@ -1,71 +1,157 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Trello Export Power-Up</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Load the Trello Power-Up library -->
-    <script src="https://p.trellocdn.com/power-up.min.js"></script>
-  </head>
-  <body>
-    <script>
-      // URL for your custom icon (must be HTTPS)
-      const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Trello Export Power-Up</title>
+  <!-- Load the Trello Power-Up client library -->
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+</head>
+<body>
+  <!-- A simple button to trigger export -->
+  <button id="exportButton">Export Cards to CSV</button>
+  
+  <script>
+    // Initialize the Trello Power-Up client
+    var t = TrelloPowerUp.iframe();
 
-      // Utility function for error logging and handling
-      const handleError = (error) => {
-        console.error('Power-Up Error:', error);
-        return { error: true, message: error.message || 'An unexpected error occurred' };
-      };
+    // List of custom fields we want to export – adjust as needed
+    var desiredCustomFields = [
+      'W.O. #',
+      'Attacher W.O. #',
+      'Katapult',
+      'Staking Site Count',
+      'TT Site Count',
+      'TT Start',
+      'Sent to Landon',
+      'TT Received Back',
+      'ArcFM Start',
+      'ArcFM Finished',
+      'Sent to Damon',
+      'Sent to Scheduling',
+      'Added to Schedule',
+      'Construction Started',
+      'Construction Completed',
+      'Pre-ArcFM Started',
+      'Pre-ArcFM Completed',
+      'Priority',
+      'OneDrive Link'
+    ];
 
-      // Define the board-button capability to open the export popup
-      const boardButtonsCapability = (t, options) => {
-        return [{
-          icon: {
-            dark: ICON_URL,
-            light: ICON_URL
-          },
-          text: 'Export Cards',
-          condition: 'always',
-          callback: async function(t) {
-            try {
-              return t.popup({
-                title: 'Export Cards Data',
-                url: './export.html',
-                height: 500,  // Adjust popup height as needed
-                fullscreen: false
+    // When the export button is clicked…
+    document.getElementById("exportButton").addEventListener("click", function() {
+
+      // Step 1. Get all cards with standard properties.
+      // Note: You might want to request additional fields as needed.
+      t.cards('all', ['id', 'name', 'labels', 'idList', 'idMembers'])
+      .then(function(cards){
+        
+        // Step 2. Get board lists so we can map list IDs to list names.
+        t.board('lists', ['lists'])
+        .then(function(boardData){
+          var listMapping = {};
+          boardData.lists.forEach(function(list) {
+            listMapping[list.id] = list.name;
+          });
+          
+          // Step 3. For each card, get its custom field items.
+          var cardPromises = cards.map(function(card) {
+            return t.get(card.id, 'shared', 'customFieldItems')
+              .then(function(customFieldItems) {
+                card.customFieldItems = customFieldItems || [];
+                return card;
               });
-            } catch (error) {
-              handleError(error);
-            }
-          }
-        }];
-      };
-
-      // Initialize the Power-Up (only on the connector page)
-      TrelloPowerUp.initialize({
-        'board-buttons': boardButtonsCapability,
-        'authorization-status': async (t, options) => {
-          const authStatus = await t.get('member', 'private', 'authStatus');
-          return { authorized: !!authStatus };
-        },
-        'show-settings': async (t, options) => {
-          try {
-            // Create settings.html if you wish to add settings
-            return t.popup({
-              title: 'Export Settings',
-              url: './settings.html',
-              height: 200
+          });
+          
+          Promise.all(cardPromises).then(function(cardsWithCustomFields) {
+            
+            // Step 4. Get the board’s custom fields definitions.
+            // (Depending on your configuration, these may be stored in 'shared' or 'private' storage.)
+            t.get('board', 'shared', 'customFields')
+            .then(function(boardCustomFields) {
+              var customFieldMapping = {};
+              if (boardCustomFields && boardCustomFields.length) {
+                boardCustomFields.forEach(function(field) {
+                  customFieldMapping[field.id] = field.name;
+                });
+              }
+              
+              // Step 5. Build CSV rows.
+              var csvRows = [];
+              // Define header row
+              var header = [
+                'Card Name', 'List Name', 'Labels', 'Members'
+              ].concat(desiredCustomFields);
+              csvRows.push(header.join(','));
+              
+              // Process each card.
+              cardsWithCustomFields.forEach(function(card) {
+                // Standard fields:
+                var cardName = card.name || '';
+                var listName = listMapping[card.idList] || '';
+                // Join label names (using a semicolon as delimiter)
+                var labels = (card.labels || []).map(function(label) {
+                  return label.name;
+                }).join(';');
+                // For members, you may need to fetch member names separately.
+                // Here, we assume card.members is an array of strings; adjust as needed.
+                var members = (card.idMembers || []).join(';');
+                
+                // Process custom fields for this card.
+                var customFieldValues = {};
+                card.customFieldItems.forEach(function(item) {
+                  // Lookup the human-readable field name from the board's custom fields
+                  var fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
+                  // Determine the value based on field type:
+                  var value = '';
+                  if (item.value) {
+                    if (item.value.text) {
+                      value = item.value.text;
+                    } else if (item.value.number) {
+                      value = item.value.number;
+                    } else if (item.value.date) {
+                      value = item.value.date;
+                    }
+                  }
+                  customFieldValues[fieldName] = value;
+                });
+                
+                // Build an array of custom field values in the order of desiredCustomFields.
+                var customValues = desiredCustomFields.map(function(field) {
+                  return customFieldValues[field] || '';
+                });
+                
+                // Build the full row:
+                var row = [cardName, listName, labels, members].concat(customValues);
+                // Basic CSV escaping: if a cell contains commas or quotes, enclose it in quotes and double-up any quotes.
+                row = row.map(function(cell) {
+                  if (typeof cell === 'string' && (cell.indexOf(',') !== -1 || cell.indexOf('"') !== -1)) {
+                    cell = '"' + cell.replace(/"/g, '""') + '"';
+                  }
+                  return cell;
+                });
+                
+                csvRows.push(row.join(','));
+              });
+              
+              // Step 6. Create CSV content and trigger download.
+              var csvContent = csvRows.join('\n');
+              var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement('a');
+              a.href = url;
+              a.download = 'trello_export.csv';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
             });
-          } catch (error) {
-            handleError(error);
-          }
-        }
-      }, {
-        appName: 'ServOS Export',
-        apiVersion: 1,
-        enableContext: true
+          });
+        });
+      })
+      .catch(function(err){
+        console.error('Error exporting cards:', err);
+        t.alert({ message: 'Error exporting cards. Check the console for details.' });
       });
-    </script>
-  </body>
+    });
+  </script>
+</body>
 </html>
