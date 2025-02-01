@@ -106,62 +106,86 @@
   </div>
 
   <script>
-    // Initialize the Trello Power-Up iframe communication
+    // Initialize Trello Power-Up communication
     var t = TrelloPowerUp.iframe();
 
-    // Utility function: display error message in the UI
+    // Utility: Display error messages in the UI
     const showError = (message) => {
       const errorDiv = document.getElementById('errorMessage');
       errorDiv.textContent = message;
       errorDiv.style.display = 'block';
     };
 
-    // Utility function: show/hide the loading indicator
+    // Utility: Show or hide a loading indicator
     const showLoading = (isVisible) => {
       document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
     };
 
     /**
-     * Fetches board data separately so you can identify which command fails.
-     * Logs each step to the console.
+     * Fetch board data separately so we can pinpoint which command fails.
+     * Each call is wrapped in its own try–catch block and logs to the console.
+     */
+    async function getBoardData() {
+      let cards = [], members = [], lists = [], customFields = [];
+      
+      try {
+        cards = await t.cards('all');
+        console.log('Cards fetched:', cards);
+      } catch (error) {
+        console.error("Failed to fetch cards (t.cards('all')):", error);
+      }
+      
+      try {
+        members = await t.board('members');
+        console.log('Members fetched:', members);
+      } catch (error) {
+        console.error("Failed to fetch board('members'):", error);
+      }
+      
+      try {
+        lists = await t.board('lists');
+        console.log('Lists fetched:', lists);
+      } catch (error) {
+        console.error("Failed to fetch board('lists'):", error);
+      }
+      
+      try {
+        customFields = await t.board('customFields');
+        console.log('Custom fields fetched:', customFields);
+      } catch (error) {
+        console.warn("Failed to fetch board('customFields'):", error);
+        // If custom fields are not available, we default to an empty array.
+        customFields = [];
+      }
+      
+      return { cards, members, lists, customFields };
+    }
+
+    /**
+     * Process the fetched data and map each card into an object with:
+     * - cardname
+     * - cardlistname
+     * - cardlabelnames
+     * - cardmemberfullnames
+     * - plus any custom fields (using the custom field's name)
      */
     async function getCardData() {
       try {
-        // Fetch cards
-        const cards = await t.cards('all');
-        console.log('Cards fetched:', cards);
+        const { cards, members, lists, customFields } = await getBoardData();
 
-        // Fetch board members
-        const members = await t.board('members');
-        console.log('Members fetched:', members);
-
-        // Fetch board lists
-        const lists = await t.board('lists');
-        console.log('Lists fetched:', lists);
-
-        // Fetch custom fields; if this fails, catch and set to empty array
-        let customFields;
-        try {
-          customFields = await t.board('customFields');
-          console.log('Custom fields fetched:', customFields);
-        } catch (error) {
-          console.warn('Custom fields not available:', error);
-          customFields = [];
-        }
-
-        // Build member mapping: id → full name
+        // Build mapping: member ID → full name
         const memberMapping = {};
         members.forEach(member => {
           memberMapping[member.id] = member.fullName || member.username;
         });
 
-        // Build list mapping: id → list name
+        // Build mapping: list ID → list name
         const listMapping = {};
         lists.forEach(list => {
           listMapping[list.id] = list.name;
         });
 
-        // Build custom field mapping: id → custom field name
+        // Build mapping: custom field ID → custom field name
         const customFieldMapping = {};
         if (Array.isArray(customFields)) {
           customFields.forEach(cf => {
@@ -173,8 +197,9 @@
           }
         }
 
-        // Process each card and map desired fields
+        // Map each card into the desired export object
         return cards.map(card => {
+          // Process custom fields for this card
           let cardCustomFields = {};
           if (card.customFieldItems) {
             card.customFieldItems.forEach(item => {
@@ -201,13 +226,13 @@
           };
         });
       } catch (error) {
-        throw new Error('Failed to fetch board data: ' + error.message);
+        throw new Error('Failed to fetch card data: ' + error.message);
       }
     }
 
     /**
-     * Helper: Determine header order for export.
-     * Fixed headers: cardname, cardlistname, cardlabelnames, cardmemberfullnames
+     * Helper: Determine the header order for export.
+     * Fixed headers are: cardname, cardlistname, cardlabelnames, cardmemberfullnames.
      * Any additional keys (custom fields) are appended.
      */
     function determineHeaderOrder(cards) {
