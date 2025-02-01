@@ -1,72 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Trello Export Power-Up</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Load the Trello Power-Up library -->
-  <script src="https://p.trellocdn.com/power-up.min.js"></script>
-</head>
-<body>
-  <script>
-    // URL for your custom icon
-    const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
+  <head>
+    <meta charset="utf-8">
+    <title>Trello Export Power-Up</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Load the Trello Power-Up library -->
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // URL for your custom icon (ensure it’s hosted via HTTPS)
+      const ICON_URL = 'https://rkwm713.github.io/ServOS-Export/icon.png';
 
-    // Utility function for logging and handling errors
-    const handleError = (error) => {
-      console.error('Power-Up Error:', error);
-      // Optionally, you can display an alert or custom UI feedback here
-      return { error: true, message: error.message || 'An unexpected error occurred' };
-    };
+      // Utility function for error logging and handling
+      const handleError = (error) => {
+        console.error('Power-Up Error:', error);
+        // Optionally, you can display UI feedback here
+        return { error: true, message: error.message || 'An unexpected error occurred' };
+      };
 
-    // Define the board button capability to open the export popup
-    const boardButtonsCapability = (t, options) => {
-      return [{
-        icon: {
-          dark: ICON_URL,
-          light: ICON_URL
+      // Board button capability: returns a button that opens the export popup
+      const boardButtonsCapability = (t, options) => {
+        return [{
+          icon: {
+            dark: ICON_URL,
+            light: ICON_URL
+          },
+          text: 'Export Cards',
+          condition: 'always',
+          callback: async function(t) {
+            try {
+              return t.popup({
+                title: 'Export Cards Data',
+                url: './export.html',
+                height: 500,  // Adjust popup height for visibility
+                fullscreen: false
+              });
+            } catch (error) {
+              handleError(error);
+            }
+          }
+        }];
+      };
+
+      // Initialize the Power-Up on the connector page
+      TrelloPowerUp.initialize({
+        'board-buttons': boardButtonsCapability,
+        'authorization-status': async (t, options) => {
+          const authStatus = await t.get('member', 'private', 'authStatus');
+          return { authorized: !!authStatus };
         },
-        text: 'Export Cards',
-        condition: 'always',
-        callback: async function(t) {
+        'show-settings': async (t, options) => {
           try {
+            // If you want to add settings, create a settings.html page.
             return t.popup({
-              title: 'Export Cards Data',
-              url: './export.html',
-              height: 500,  // Increased height for better visibility
-              fullscreen: false
+              title: 'Export Settings',
+              url: './settings.html',
+              height: 200
             });
           } catch (error) {
             handleError(error);
           }
         }
-      }];
-    };
-
-    // Initialize the Trello Power-Up with enhanced capabilities
-    TrelloPowerUp.initialize({
-      'board-buttons': boardButtonsCapability,
-      'authorization-status': async (t, options) => {
-        const authStatus = await t.get('member', 'private', 'authStatus');
-        return { authorized: !!authStatus };
-      },
-      'show-settings': async (t, options) => {
-        try {
-          // Make sure to create a settings.html if you use this feature.
-          return t.popup({
-            title: 'Export Settings',
-            url: './settings.html',
-            height: 200
-          });
-        } catch (error) {
-          handleError(error);
-        }
-      }
-    }, {
-      appName: 'ServOS Export',
-      apiVersion: 1,
-      enableContext: true
-    });
-  </script>
-</body>
+      }, {
+        appName: 'ServOS Export',
+        apiVersion: 1,
+        enableContext: true
+      });
+    </script>
+  </body>
 </html>
