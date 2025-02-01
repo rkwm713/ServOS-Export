@@ -27,6 +27,34 @@
         }];
       }
     });
+
+    document.getElementById('exportBtn').addEventListener('click', function() {
+      // First check if we have the required capabilities
+      t.getRestApi()
+        .isAuthorized()
+        .then(function(authorized) {
+          if (!authorized) {
+            // Request authorization if not already granted
+            return t.getRestApi().authorize({ scope: 'read' });
+          }
+        })
+        .then(function() {
+          // Proceed with data fetching
+          return Promise.all([
+            t.board('all'),  // Changed from just 'cards' to 'all'
+            t.lists('all'),  // Changed from board('lists')
+            t.board('members'),
+            t.board('customFields')
+          ]);
+        })
+        .then(function(results) {
+          // Rest of your existing code...
+        })
+        .catch(function(error) {
+          console.error('Error:', error);
+          document.getElementById('output').textContent = 'Error: ' + error.message;
+        });
+    });
   </script>
 </body>
 </html>
