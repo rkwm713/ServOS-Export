@@ -1,361 +1,195 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8">
-    <title>Export Cards Data - Debug Mode</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Load Trello Power-Up library -->
+    <title>Export Cards Data</title>
+    <!-- Include the Trello Power-Up client library -->
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
-    <!-- Load XLSX library for Excel/CSV export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        padding: 20px;
-        max-width: 1200px;
-        margin: 0 auto;
-        background-color: #f4f5f7;
-      }
-      .container {
-        background: white;
-        padding: 20px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-      h1 {
-        color: #172b4d;
-        margin-bottom: 20px;
-      }
-      .button-group {
-        display: flex;
-        gap: 10px;
-        margin-bottom: 20px;
-      }
-      button {
-        background-color: #0079BF;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 3px;
-        cursor: pointer;
-        font-size: 14px;
-        transition: background-color 0.2s;
-      }
-      button:hover {
-        background-color: #026AA7;
-      }
-      button:disabled {
-        background-color: #97a0af;
-        cursor: not-allowed;
-      }
-      .loading {
-        display: none;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-      }
-      .spinner {
-        border: 4px solid #f3f3f3;
-        border-top: 4px solid #0079BF;
-        border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        animation: spin 1s linear infinite;
-      }
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-      .error-message {
-        color: #eb5a46;
-        padding: 10px;
-        background: #ffebe6;
-        border-radius: 3px;
-        margin: 10px 0;
-        display: none;
-      }
-      #downloadContainer {
-        margin-top: 20px;
-      }
+      body { font-family: sans-serif; margin: 20px; }
+      #status { margin-top: 20px; }
+      button { font-size: 1em; padding: 10px 15px; }
     </style>
   </head>
   <body>
-    <div class="container">
-      <h1>Export Cards (Debug Mode)</h1>
-      <div class="error-message" id="errorMessage"></div>
-      <div class="button-group">
-        <button id="exportExcel">Export to Excel</button>
-        <button id="exportCSV">Export to CSV</button>
-      </div>
-      <div class="loading" id="loading">
-        <span>Exporting...</span>
-        <div class="spinner"></div>
-      </div>
-      <div id="downloadContainer"></div>
-    </div>
+    <h2>Export Cards Data</h2>
+    <p>
+      Click the button below to export your board’s cards (with their list, labels, members, and custom fields) as a CSV file.
+    </p>
+    <button id="exportBtn">Export Now</button>
+    <div id="status"></div>
 
     <script>
-      // Initialize the Power-Up in a popup context.
-      var t = TrelloPowerUp.iframe();
+      // When the Export button is clicked…
+      document.getElementById('exportBtn').addEventListener('click', function() {
+        // Disable the button and show status
+        this.disabled = true;
+        document.getElementById('status').innerText = 'Exporting...';
 
-      // Check for secret (optional); useful if you need to sign external URLs.
-      if (!t.arg('secret')) {
-        console.warn('Export popup initialized without a secret. Signing URLs will not work.');
-      }
-      
-      // Utility: Display error messages in the UI.
-      const showError = (message) => {
-        const errorDiv = document.getElementById('errorMessage');
-        errorDiv.textContent = message;
-        errorDiv.style.display = 'block';
-      };
+        // Get the Power-Up context from the popup
+        var t = TrelloPowerUp.iframe();
 
-      // Utility: Show or hide the loading indicator.
-      const showLoading = (isVisible) => {
-        document.getElementById('loading').style.display = isVisible ? 'flex' : 'none';
-      };
+        // Retrieve the board ID from the context
+        t.getContext().then(function(context) {
+          var boardId = context.board;
+          // Use your API key (provided) – note that the secret is not used here
+          var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95';
 
-      /**
-       * Fetch board data (cards, members, lists, custom fields).
-       * Each API call is wrapped in a try-catch; if a call fails, we use a default empty array.
-       */
-      async function getBoardData() {
-        let cards = [], members = [], lists = [], customFields = [];
-        
-        // Fetch cards.
-        try {
-          cards = await t.cards('all');
-          console.log('Cards fetched:', cards);
-        } catch (error) {
-          console.error("Failed to fetch cards (t.cards('all')):", error);
-        }
-        
-        // Fetch members.
-        try {
-          let membersResult = await t.board('members');
-          console.log('Raw members result:', membersResult);
-          if (Array.isArray(membersResult)) {
-            members = membersResult;
-          } else if (membersResult && typeof membersResult === 'object') {
-            members = Object.values(membersResult);
-          } else {
-            members = [];
+          // For private boards you must supply a valid member token.
+          // Check if a token is stored; if not, prompt the user.
+          var token = localStorage.getItem('trelloToken');
+          if (!token) {
+            token = prompt("Enter your Trello token (get one at https://trello.com/app-key):");
+            if (token) {
+              localStorage.setItem('trelloToken', token);
+            } else {
+              throw new Error("A token is required for this export.");
+            }
           }
-          console.log('Members fetched:', members);
-        } catch (error) {
-          console.error("Failed to fetch board('members'):", error);
-          members = [];
-        }
-        
-        // Fetch lists.
-        try {
-          let listsResult = await t.board('lists');
-          console.log('Raw lists result:', listsResult);
-          if (Array.isArray(listsResult)) {
-            lists = listsResult;
-          } else if (listsResult && typeof listsResult === 'object') {
-            lists = Object.values(listsResult);
-          } else {
-            lists = [];
-          }
-          console.log('Lists fetched:', lists);
-        } catch (error) {
-          console.error("Failed to fetch board('lists'):", error, JSON.stringify(error));
-          lists = [];
-        }
-        
-        // Fetch custom fields.
-        try {
-          let customFieldsResult = await t.board('customFields');
-          console.log('Raw custom fields result:', customFieldsResult);
-          if (Array.isArray(customFieldsResult)) {
-            customFields = customFieldsResult;
-          } else if (customFieldsResult && typeof customFieldsResult === 'object') {
-            customFields = Object.values(customFieldsResult);
-          } else {
-            customFields = [];
-          }
-          console.log('Custom fields fetched:', customFields);
-        } catch (error) {
-          console.warn("Failed to fetch board('customFields'):", error);
-          customFields = [];
-        }
-        
-        return { cards, members, lists, customFields };
-      }
 
-      /**
-       * Process the fetched data and build an export object for each card.
-       * Fixed fields: Card Name, List Name, Labels, Members.
-       * Then add custom fields in the desired order.
-       */
-      async function getCardData() {
-        try {
-          const { cards, members, lists, customFields } = await getBoardData();
+          // Build URLs for REST API calls
+          var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
+          var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
+          var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=username&key=${apiKey}&token=${token}`;
+          var customFieldsURL = `https://api.trello.com/1/boards/${boardId}/customFields?key=${apiKey}&token=${token}`;
 
-          // Define fixed fields via functions.
-          const fixedFields = {
-            "Card Name": card => card.name,
-            "List Name": card => {
-              const list = lists.find(l => l.id === card.idList);
-              return list ? list.name : "";
-            },
-            "Labels": card => card.labels ? card.labels.map(l => l.name).join('; ') : "",
-            "Members": card => card.idMembers ? card.idMembers.map(id => {
-              const member = members.find(m => m.id === id);
-              return member ? (member.fullName || member.username) : "";
-            }).join('; ') : ""
-          };
+          // Fetch lists, cards, members, and custom fields concurrently
+          Promise.all([
+            fetch(listsURL).then(res => res.json()),
+            fetch(cardsURL).then(res => res.json()),
+            fetch(membersURL).then(res => res.json()),
+            fetch(customFieldsURL).then(res => res.json())
+          ]).then(function([lists, cards, members, customFields]) {
+            // Create a mapping of list ID → list name
+            var listMap = {};
+            lists.forEach(function(list) {
+              listMap[list.id] = list.name;
+            });
 
-          // Desired custom fields in the specific order.
-          const desiredCustomFields = [
-            "W.O. #",
-            "Attacher W.O. #",
-            "Katapult",
-            "Staking Site Count",
-            "TT Site Count",
-            "TT Start",
-            "Sent to Landon",
-            "TT Received Back",
-            "ArcFM Start",
-            "ArcFM Finished",
-            "Sent to Damon",
-            "Sent to Scheduling",
-            "Added to Schedule",
-            "Construction Started",
-            "Construction Completed",
-            "Pre-ArcFM Started",
-            "Pre-ArcFM Completed",
-            "Priority",
-            "OneDrive Link"
-          ];
+            // Create a mapping of member ID → username
+            var memberMap = {};
+            members.forEach(function(member) {
+              memberMap[member.id] = member.username;
+            });
 
-          // Build a mapping from custom field name to its ID.
-          const customFieldNameToId = {};
-          if (Array.isArray(customFields)) {
-            customFields.forEach(cf => {
-              // Many custom field objects use "idCustomField" instead of "id".
-              const cfId = cf.idCustomField || cf.id;
-              if (cf.name) {
-                customFieldNameToId[cf.name] = cfId;
+            // Create a mapping of custom field ID → custom field name
+            var customFieldMap = {};
+            customFields.forEach(function(field) {
+              customFieldMap[field.id] = field.name;
+            });
+
+            // Define the desired custom fields (exact names must match your board’s custom fields)
+            var desiredCustomFields = [
+              "W.O. #",
+              "Attacher W.O. #",
+              "Katapult",
+              "Staking Site Count",
+              "TT Site Count",
+              "TT Start",
+              "Sent to Landon",
+              "TT Received Back",
+              "ArcFM Start",
+              "ArcFM Finished",
+              "Sent to Damon",
+              "Sent to Scheduling",
+              "Added to Schedule",
+              "Construction Started",
+              "Construction Completed",
+              "Pre-ArcFM Started",
+              "Pre-ArcFM Completed",
+              "Priority",
+              "OneDrive Link"
+            ];
+
+            // Map desired custom field names to their corresponding custom field IDs
+            var desiredFieldIdMap = {};
+            for (var id in customFieldMap) {
+              if (desiredCustomFields.indexOf(customFieldMap[id]) > -1) {
+                desiredFieldIdMap[customFieldMap[id]] = id;
               }
-            });
-          }
-
-          // For each card, build the export object.
-          return cards.map(card => {
-            let exportObj = {};
-
-            // Add fixed fields.
-            Object.keys(fixedFields).forEach(field => {
-              exportObj[field] = fixedFields[field](card);
-            });
-
-            // Process custom fields.
-            // Build a temporary mapping from custom field ID to value for the card.
-            let cardCustomValues = {};
-            if (card.customFieldItems) {
-              card.customFieldItems.forEach(item => {
-                // Look up field name using idCustomField.
-                const fieldName = Object.keys(customFieldNameToId).find(name => customFieldNameToId[name] === item.idCustomField) || item.idCustomField;
-                let value = "";
-                if (item.value) {
-                  if (item.value.text) {
-                    value = item.value.text;
-                  } else if (item.value.number) {
-                    value = item.value.number;
-                  } else if (item.value.date) {
-                    value = new Date(item.value.date).toLocaleString();
-                  }
-                }
-                cardCustomValues[fieldName] = value;
-              });
             }
 
-            // For each desired custom field, add its value (or blank if missing).
-            desiredCustomFields.forEach(fieldName => {
-              exportObj[fieldName] = cardCustomValues[fieldName] || "";
+            // Start building CSV rows; first, add the header row.
+            var csvRows = [];
+            var header = ["Card Name", "List Name", "Labels", "Members"].concat(desiredCustomFields);
+            csvRows.push(header.join(','));
+
+            // Process each card
+            cards.forEach(function(card) {
+              var row = [];
+              // Card Name (escape quotes)
+              row.push('"' + (card.name || '').replace(/"/g, '""') + '"');
+              // List Name (look up by card.idList)
+              var listName = listMap[card.idList] || '';
+              row.push('"' + listName.replace(/"/g, '""') + '"');
+              // Labels (join label names or colors with a semicolon)
+              var labels = (card.labels || []).map(function(label) {
+                return label.name || label.color;
+              }).join('; ');
+              row.push('"' + labels.replace(/"/g, '""') + '"');
+              // Members (map member IDs to usernames)
+              var membersStr = (card.idMembers || []).map(function(id) {
+                return memberMap[id] || id;
+              }).join('; ');
+              row.push('"' + membersStr.replace(/"/g, '""') + '"');
+
+              // Gather custom field values for this card.
+              // The card.customFieldItems array (if present) holds the custom field data.
+              var customValues = {};
+              if (card.customFieldItems) {
+                card.customFieldItems.forEach(function(item) {
+                  var cfId = item.idCustomField;
+                  // If this custom field is one of the desired fields…
+                  for (var fieldName in desiredFieldIdMap) {
+                    if (desiredFieldIdMap[fieldName] === cfId) {
+                      var val = '';
+                      if (item.value) {
+                        // Depending on the field type the value may be in .text, .number, or .date.
+                        if (item.value.text) { 
+                          val = item.value.text; 
+                        } else if (item.value.number) { 
+                          val = item.value.number; 
+                        } else if (item.value.date) { 
+                          val = item.value.date; 
+                        } else {
+                          val = JSON.stringify(item.value);
+                        }
+                      }
+                      customValues[fieldName] = val;
+                    }
+                  }
+                });
+              }
+              // For each desired custom field, add its value (or blank if not present)
+              desiredCustomFields.forEach(function(field) {
+                var value = customValues[field] || '';
+                row.push('"' + value.replace(/"/g, '""') + '"');
+              });
+
+              csvRows.push(row.join(','));
             });
 
-            return exportObj;
+            // Combine all rows into a CSV string.
+            var csvContent = csvRows.join('\n');
+
+            // Create a Blob from the CSV string and a temporary download link.
+            var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'trello_cards_export.csv';
+            a.innerText = 'Download CSV';
+            document.getElementById('status').innerHTML = ''; // Clear status and show download link
+            document.getElementById('status').appendChild(a);
+          }).catch(function(err) {
+            console.error(err);
+            document.getElementById('status').innerText = 'Error: ' + err.message;
           });
-        } catch (error) {
-          throw new Error('Failed to fetch card data: ' + error.message);
-        }
-      }
-
-      /**
-       * Returns header order: fixed headers followed by desired custom fields.
-       */
-      function determineHeaderOrder() {
-        const fixedHeaders = ["Card Name", "List Name", "Labels", "Members"];
-        const desiredCustomFields = [
-          "W.O. #",
-          "Attacher W.O. #",
-          "Katapult",
-          "Staking Site Count",
-          "TT Site Count",
-          "TT Start",
-          "Sent to Landon",
-          "TT Received Back",
-          "ArcFM Start",
-          "ArcFM Finished",
-          "Sent to Damon",
-          "Sent to Scheduling",
-          "Added to Schedule",
-          "Construction Started",
-          "Construction Completed",
-          "Pre-ArcFM Started",
-          "Pre-ArcFM Completed",
-          "Priority",
-          "OneDrive Link"
-        ];
-        return fixedHeaders.concat(desiredCustomFields);
-      }
-
-      // Export card data to Excel.
-      async function exportToExcel() {
-        try {
-          showLoading(true);
-          const cards = await getCardData();
-          const headerOrder = determineHeaderOrder();
-          const workbook = XLSX.utils.book_new();
-          const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
-          XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
-          XLSX.writeFile(workbook, "trello-cards.xlsx");
-          showLoading(false);
-        } catch (error) {
-          showLoading(false);
-          showError(error.message);
-        }
-      }
-
-      // Export card data to CSV.
-      async function exportToCSV() {
-        try {
-          showLoading(true);
-          const cards = await getCardData();
-          const headerOrder = determineHeaderOrder();
-          const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
-          const csv = XLSX.utils.sheet_to_csv(worksheet);
-          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = 'trello_cards_export.csv';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          showLoading(false);
-        } catch (error) {
-          showLoading(false);
-          showError(error.message);
-        }
-      }
-
-      // Attach event listeners to export buttons.
-      document.getElementById('exportExcel').addEventListener('click', exportToExcel);
-      document.getElementById('exportCSV').addEventListener('click', exportToCSV);
+        }).catch(function(err){
+          console.error(err);
+          document.getElementById('status').innerText = 'Error: ' + err.message;
+        });
+      });
     </script>
   </body>
 </html>
-
