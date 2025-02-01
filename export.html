@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Export Cards Data</title>
+  <title>Export Cards Data - Debug Mode</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Load Trello Power-Up library -->
   <script src="https://p.trellocdn.com/power-up.min.js"></script>
@@ -92,7 +92,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>Export Cards</h1>
+    <h1>Export Cards (Debug Mode)</h1>
     <div class="error-message" id="errorMessage"></div>
     <div class="button-group">
       <button id="exportExcel">Export to Excel</button>
@@ -109,7 +109,7 @@
     // Initialize the Trello Power-Up iframe communication
     var t = TrelloPowerUp.iframe();
 
-    // Utility function: show error message in the UI
+    // Utility function: display error message in the UI
     const showError = (message) => {
       const errorDiv = document.getElementById('errorMessage');
       errorDiv.textContent = message;
@@ -122,37 +122,46 @@
     };
 
     /**
-     * Fetches cards along with additional board data (members, lists, custom fields)
-     * and maps each card into an object with keys:
-     *  - cardname
-     *  - cardlistname
-     *  - cardlabelnames
-     *  - cardmemberfullnames
-     *  - plus each custom field (using the custom field's name)
+     * Fetches board data separately so you can identify which command fails.
+     * Logs each step to the console.
      */
     async function getCardData() {
       try {
-        // Fetch all cards, board members, lists, and custom field definitions in parallel
-        const [cards, members, lists, customFields] = await Promise.all([
-          t.cards('all'),
-          t.board('members'),
-          t.board('lists'),
-          t.board('customFields')
-        ]);
+        // Fetch cards
+        const cards = await t.cards('all');
+        console.log('Cards fetched:', cards);
 
-        // Build mapping from member IDs to full names
+        // Fetch board members
+        const members = await t.board('members');
+        console.log('Members fetched:', members);
+
+        // Fetch board lists
+        const lists = await t.board('lists');
+        console.log('Lists fetched:', lists);
+
+        // Fetch custom fields; if this fails, catch and set to empty array
+        let customFields;
+        try {
+          customFields = await t.board('customFields');
+          console.log('Custom fields fetched:', customFields);
+        } catch (error) {
+          console.warn('Custom fields not available:', error);
+          customFields = [];
+        }
+
+        // Build member mapping: id → full name
         const memberMapping = {};
         members.forEach(member => {
           memberMapping[member.id] = member.fullName || member.username;
         });
 
-        // Build mapping from list IDs to list names
+        // Build list mapping: id → list name
         const listMapping = {};
         lists.forEach(list => {
           listMapping[list.id] = list.name;
         });
 
-        // Build mapping from custom field IDs to custom field names
+        // Build custom field mapping: id → custom field name
         const customFieldMapping = {};
         if (Array.isArray(customFields)) {
           customFields.forEach(cf => {
@@ -164,13 +173,11 @@
           }
         }
 
-        // Process each card to build the export object
+        // Process each card and map desired fields
         return cards.map(card => {
-          // Extract custom field values from the card (if any)
           let cardCustomFields = {};
           if (card.customFieldItems) {
             card.customFieldItems.forEach(item => {
-              // Determine the display name of the custom field using our mapping
               const fieldName = customFieldMapping[item.idCustomField] || item.idCustomField;
               let value = '';
               if (item.value) {
@@ -194,14 +201,14 @@
           };
         });
       } catch (error) {
-        throw new Error('Failed to fetch card data: ' + error.message);
+        throw new Error('Failed to fetch board data: ' + error.message);
       }
     }
 
     /**
-     * Helper: Given an array of card objects, determine the header order.
-     * We want the headers in the order:
-     *  [cardname, cardlistname, cardlabelnames, cardmemberfullnames, ...custom fields]
+     * Helper: Determine header order for export.
+     * Fixed headers: cardname, cardlistname, cardlabelnames, cardmemberfullnames
+     * Any additional keys (custom fields) are appended.
      */
     function determineHeaderOrder(cards) {
       const fixedHeaders = ['cardname', 'cardlistname', 'cardlabelnames', 'cardmemberfullnames'];
@@ -213,8 +220,7 @@
           }
         });
       });
-      const extraHeaders = Array.from(extraHeadersSet);
-      return fixedHeaders.concat(extraHeaders);
+      return fixedHeaders.concat(Array.from(extraHeadersSet));
     }
 
     // Export card data to an Excel file
@@ -224,7 +230,6 @@
         const cards = await getCardData();
         const headerOrder = determineHeaderOrder(cards);
         const workbook = XLSX.utils.book_new();
-        // Create a worksheet using the header order; this ensures our CSV/Excel shows the desired headers.
         const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
         XLSX.utils.book_append_sheet(workbook, worksheet, "Cards");
         XLSX.writeFile(workbook, "trello-cards.xlsx");
@@ -241,9 +246,7 @@
         showLoading(true);
         const cards = await getCardData();
         const headerOrder = determineHeaderOrder(cards);
-        // Create a worksheet with the desired headers
         const worksheet = XLSX.utils.json_to_sheet(cards, { header: headerOrder });
-        // Convert the worksheet to CSV text
         const csv = XLSX.utils.sheet_to_csv(worksheet);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -257,7 +260,7 @@
       }
     }
 
-    // Attach event listeners to the export buttons
+    // Attach event listeners to export buttons
     document.getElementById('exportExcel').addEventListener('click', exportToExcel);
     document.getElementById('exportCSV').addEventListener('click', exportToCSV);
   </script>
