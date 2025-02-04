@@ -90,6 +90,13 @@
         }
       }
 
+        if (!boardId) {
+          throw new Error('Board ID not found in context');
+        }
+        if (!token) {
+          throw new Error('Authentication token not found');
+        }
+        
       /**
        * Setup the export button to fetch data and download CSV.
        */
