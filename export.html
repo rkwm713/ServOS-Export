@@ -14,12 +14,10 @@
   </head>
   <body>
     <h2>Export Cards Data</h2>
-    <!-- Section shown when user must authorize the Power-Up -->
     <div id="authSection" style="display:none;">
       <p>Please authorize this Power-Up to access your board data.</p>
       <button id="authBtn">Login with Trello</button>
     </div>
-    <!-- Section shown once user is authorized -->
     <div id="exportSection" style="display:none;">
       <button id="exportBtn">Export Now</button>
       <div id="status"></div>
@@ -27,207 +25,161 @@
 
     <script>
       (function() {
-        var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95'; // Your public API key; secret is NOT exposed.
+        var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95'; // Your Trello API key
+        var netlifyBaseUrl = 'https://servoscsvexport.netlify.app/.netlify/functions'; // Change if needed
         var t = TrelloPowerUp.iframe();
-
+        
         /**
-         * Retrieves the Trello token from localStorage or from the URL hash (after OAuth redirect).
+         * Function to retrieve the token from the server.
          */
-        function getToken() {
-          var token = localStorage.getItem('trelloToken');
-          if (!token && window.location.hash) {
-            // Expected format: #token=YOUR_TOKEN
-            var hash = window.location.hash.substring(1); // Remove the '#' character
-            var params = new URLSearchParams(hash);
-            token = params.get('token');
-            if (token) {
-              localStorage.setItem('trelloToken', token);
-              // Clean up URL hash for neatness.
-              window.location.hash = '';
+        async function getToken(userId) {
+          try {
+            const response = await fetch(`${netlifyBaseUrl}/get-token?userId=${userId}`);
+            if (response.ok) {
+              const data = await response.json();
+              return data.token;
+            } else {
+              console.log('No token found. Need to authorize.');
+              return null;
             }
+          } catch (err) {
+            console.error('Error retrieving token:', err);
+            return null;
           }
-          return token;
         }
 
         /**
-         * Initiates the OAuth flow by redirecting the user to Trello’s authorization page.
-         * On successful authorization, Trello will redirect back with the token in the URL hash.
+         * Initiates the OAuth process by redirecting the user to Trello’s authorization page.
          */
-        function initiateOAuth() {
+        function initiateOAuth(userId) {
           var returnUrl = encodeURIComponent(window.location.href);
-          var authUrl = 'https://trello.com/1/authorize' +
-                        '?expiration=never' +
-                        '&name=Export%20Cards%20Power-Up' +
-                        '&scope=read' +
-                        '&response_type=token' +
-                        '&key=' + apiKey +
-                        '&return_url=' + returnUrl;
+          var authUrl = `https://trello.com/1/authorize?expiration=never&name=Export%20Cards%20Power-Up&scope=read&response_type=token&key=${apiKey}&return_url=${returnUrl}`;
+
           window.location.href = authUrl;
         }
 
-        // Check if we already have a valid token.
-        var token = getToken();
-        if (!token) {
-          // Show the authorization UI.
-          document.getElementById('authSection').style.display = 'block';
-          document.getElementById('authBtn').addEventListener('click', function() {
-            initiateOAuth();
-          });
-        } else {
-          // Token is present; show the export UI.
-          document.getElementById('exportSection').style.display = 'block';
-          document.getElementById('exportBtn').addEventListener('click', function() {
+        /**
+         * Save the token on the server via Netlify function.
+         */
+        async function saveToken(userId, token) {
+          try {
+            const response = await fetch(`${netlifyBaseUrl}/save-token`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId, token }),
+            });
+            if (response.ok) {
+              console.log('Token saved successfully.');
+            } else {
+              console.error('Failed to save token.');
+            }
+          } catch (err) {
+            console.error('Error saving token:', err);
+          }
+        }
+
+        /**
+         * Initialize the process to get or generate a token.
+         */
+        async function initialize() {
+          const context = await t.getContext();
+          const userId = context.member;
+
+          // Check for token on the server
+          let token = await getToken(userId);
+          
+          if (!token && window.location.hash) {
+            // Handle redirect after OAuth and extract the token
+            var hash = window.location.hash.substring(1); 
+            var params = new URLSearchParams(hash);
+            token = params.get('token');
+
+            if (token) {
+              // Save token to server
+              await saveToken(userId, token);
+              window.location.hash = ''; // Clean up URL
+              document.getElementById('exportSection').style.display = 'block';
+              return;
+            }
+          }
+
+          if (token) {
+            document.getElementById('exportSection').style.display = 'block';
+            setupExportButton(token);
+          } else {
+            document.getElementById('authSection').style.display = 'block';
+            document.getElementById('authBtn').addEventListener('click', function() {
+              initiateOAuth(userId);
+            });
+          }
+        }
+
+        /**
+         * Set up the export functionality once a token is available.
+         */
+        function setupExportButton(token) {
+          document.getElementById('exportBtn').addEventListener('click', async function() {
             this.disabled = true;
             document.getElementById('status').innerText = 'Exporting...';
 
-            // Get board context synchronously.
-            var context = t.getContext();
-            var boardId = context.board;
+            const context = await t.getContext();
+            const boardId = context.board;
+
+            // Build API URLs
+            const listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
+            const cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
             
-            
-            // Build REST API URLs to fetch lists, cards, members, and custom fields.
-            var listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
-            var cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
-            var membersURL = `https://api.trello.com/1/boards/${boardId}/members?fields=fullName&key=${apiKey}&token=${token}`;
-            var customFieldsURL = `https://api.trello.com/1/boards/${boardId}/customFields?key=${apiKey}&token=${token}`;
+            // Fetch data and export as CSV
+            try {
+              const [lists, cards] = await Promise.all([
+                fetch(listsURL).then(res => res.json()),
+                fetch(cardsURL).then(res => res.json())
+              ]);
 
-            Promise.all([
-              fetch(listsURL).then(res => res.json()),
-              fetch(cardsURL).then(res => res.json()),
-              fetch(membersURL).then(res => res.json()),
-              fetch(customFieldsURL).then(res => res.json())
-            ]).then(function([lists, cards, members, customFields]) {
-              // Create mappings for lists, members, and custom fields.
-              var listMap = {};
-              lists.forEach(function(list) { listMap[list.id] = list.name; });
-              var memberMap = {};
-              members.forEach(function(member) { memberMap[member.id] = member.fullName; });
-              var customFieldMap = {};
-              customFields.forEach(function(field) { customFieldMap[field.id] = field.name; });
-
-              // Define the desired custom fields (names must match exactly your board’s custom fields).
-              var desiredCustomFields = [
-                "W.O. #",
-                "Attacher W.O. #",
-                "Katapult",
-                "Staking Site Count",
-                "TT Site Count",
-                "TT Start",
-                "Sent to Landon",
-                "TT Received Back",
-                "ArcFM Start",
-                "ArcFM Finished",
-                "Sent to Damon",
-                "Sent to Scheduling",
-                "Added to Schedule",
-                "Construction Started",
-                "Construction Completed",
-                "Pre-ArcFM Started",
-                "Pre-ArcFM Completed",
-                "Priority",
-                "OneDrive Link"
-              ];
-
-              // Map the desired custom field names to their IDs.
-              var desiredFieldIdMap = {};
-              for (var id in customFieldMap) {
-                if (desiredCustomFields.indexOf(customFieldMap[id]) > -1) {
-                  desiredFieldIdMap[customFieldMap[id]] = id;
-                }
-              }
-
-              // Build the CSV rows (first row is the header).
-              var csvRows = [];
-              var header = ["Card Name", "List Name", "Labels", "Members"].concat(desiredCustomFields);
-              csvRows.push(header.join(','));
-              
-              // Helper function to convert ISO dates to MM-DD-YYYY format.
-              function formatDate(isoDate) {
-                const date = new Date(isoDate);
-                if (isNaN(date)) {
-                  return isoDate;
-                }
-                let month = date.getMonth() + 1; // getMonth() returns 0-11
-                let day = date.getDate();
-                const year = date.getFullYear();
-                // Pad month and day with leading zeros if needed.
-                month = month < 10 ? '0' + month : month;
-                day = day < 10 ? '0' + day : day;
-                return `${month}-${day}-${year}`;
-              }
-              // Process each card.
-              cards.forEach(function(card) {
-                var row = [];
-                // Escape quotes in the card name.
-                row.push('"' + (card.name || '').replace(/"/g, '""') + '"');
-                // Lookup the list name.
-                var listName = listMap[card.idList] || '';
-                row.push('"' + listName.replace(/"/g, '""') + '"');
-                // Process labels.
-                var labels = (card.labels || []).map(function(label) {
-                  return label.name || label.color;
-                }).join('; ');
-                row.push('"' + labels.replace(/"/g, '""') + '"');
-                // Process members.
-                var membersStr = (card.idMembers || []).map(function(id) {
-                  return memberMap[id] || id;
-                }).join('; ');
-                row.push('"' + membersStr.replace(/"/g, '""') + '"');
-
-                // Process custom fields.
-                var customValues = {};
-                if (card.customFieldItems) {
-                  card.customFieldItems.forEach(function(item) {
-                    var cfId = item.idCustomField;
-                    // For each desired custom field, check if this item matches.
-                    for (var fieldName in desiredFieldIdMap) {
-                      if (desiredFieldIdMap[fieldName] === cfId) {
-                        var val = '';
-                        if (item.value) {
-                          if (item.value.text) { 
-                            val = item.value.text; 
-                          } else if (item.value.number) { 
-                            val = item.value.number; 
-                          } else if (item.value.date) { 
-                            val = formatDate(item.value.date); 
-                          } else {
-                            val = JSON.stringify(item.value);
-                          }
-                        }
-                        customValues[fieldName] = val;
-                      }
-                    }
-                  });
-                }
-                // Add each desired custom field value (or blank if missing).
-                desiredCustomFields.forEach(function(field) {
-                  var value = customValues[field] || '';
-                  row.push('"' + value.replace(/"/g, '""') + '"');
-                });
-
-                csvRows.push(row.join(','));
-              });
-
-              // Combine all rows into a CSV string.
-              var csvContent = csvRows.join('\n');
-
-              // Create a Blob from the CSV and generate a temporary download link.
-              var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-              var url = URL.createObjectURL(blob);
-              var a = document.createElement('a');
-              a.href = url;
-              a.download = 'trello_cards_export.csv';
-              a.innerText = 'Download CSV';
-
-              // Display the download link.
-              document.getElementById('status').innerHTML = '';
-              document.getElementById('status').appendChild(a);
-            }).catch(function(err) {
-              console.error(err);
+              const csvContent = generateCSV(lists, cards);
+              downloadCSV(csvContent, 'trello_cards_export.csv');
+            } catch (err) {
+              console.error('Error fetching data:', err);
               document.getElementById('status').innerText = 'Error: ' + err.message;
-            });
+            }
           });
         }
+
+        /**
+         * Generate CSV content from lists and cards.
+         */
+        function generateCSV(lists, cards) {
+          const listMap = {};
+          lists.forEach(list => { listMap[list.id] = list.name; });
+
+          const csvRows = [['Card Name', 'List Name', 'Labels']];
+          cards.forEach(card => {
+            const row = [
+              `"${(card.name || '').replace(/"/g, '""')}"`,
+              `"${(listMap[card.idList] || '').replace(/"/g, '""')}"`,
+              `"${(card.labels || []).map(label => label.name).join('; ').replace(/"/g, '""')}"`
+            ];
+            csvRows.push(row.join(','));
+          });
+
+          return csvRows.join('\n');
+        }
+
+        /**
+         * Download the generated CSV file.
+         */
+        function downloadCSV(content, filename) {
+          const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.getElementById('status').innerHTML = '';
+          a.click();
+        }
+
+        // Start initialization
+        initialize();
       })();
     </script>
   </body>
