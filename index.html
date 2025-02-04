@@ -3,22 +3,27 @@
   <head>
     <meta charset="utf-8">
     <title>Export Cards Power-Up</title>
-   
     <script src="https://p.trellocdn.com/power-up.min.js"></script>
   </head>
   <body>
     <script>
+      // Initialize the Trello Power-Up
       TrelloPowerUp.initialize({
         'board-buttons': function(t, options) {
           return [{
+            // Button text
             text: 'Export Cards',
+            // Callback function when the button is clicked
             callback: function(t) {
+              // Open a popup displaying export.html
               return t.popup({
                 title: 'Export Cards Data',
-                url: './export.html', 
+                url: './export.html',
                 height: 500
               });
-            }
+            },
+            // Condition to display the button (optional)
+            condition: 'edit'
           }];
         }
       });
