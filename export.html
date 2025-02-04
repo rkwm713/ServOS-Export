@@ -86,27 +86,27 @@
         }
 
         /**
-         * Set up the export functionality once a token is available.
+         * Setup the export button to fetch data and download CSV.
          */
         function setupExportButton(token) {
           document.getElementById('exportBtn').addEventListener('click', async function() {
             this.disabled = true;
             document.getElementById('status').innerText = 'Exporting...';
 
-            const context = await t.getContext();
-            const boardId = context.board;
-
-            // Build API URLs
-            const listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
-            const cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers,customFieldItems&customFieldItems=true&key=${apiKey}&token=${token}`;
-            
-            // Fetch data and export as CSV
             try {
-              const [lists, cards] = await Promise.all([
-                fetch(listsURL).then(res => res.json()),
-                fetch(cardsURL).then(res => res.json())
-              ]);
+              const context = await t.getContext();
+              const boardId = context.board;
 
+              const response = await fetch('/.netlify/functions/get-board-data', {
+                method: 'POST',
+                body: JSON.stringify({ boardId, token })
+              });
+
+              if (!response.ok) {
+                throw new Error('Failed to fetch data');
+              }
+
+              const { lists, cards } = await response.json();
               const csvContent = generateCSV(lists, cards);
               downloadCSV(csvContent, 'trello_cards_export.csv');
             } catch (err) {
