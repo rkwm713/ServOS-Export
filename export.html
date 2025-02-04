@@ -1,182 +1,127 @@
-<!DOCTYPE html>
-<html>
+<script>
+  (function () {
+    var t = TrelloPowerUp.iframe();
 
-<head>
-  <meta charset="utf-8">
-  <title>Export Cards Data</title>
-  <!-- Include the Trello Power-Up client library -->
-  <script src="https://p.trellocdn.com/power-up.min.js"></script>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 20px;
+    async function getToken(userId) {
+      return localStorage.getItem(`trello_token_${userId}`);
     }
 
-    #status {
-      margin-top: 20px;
+    async function saveToken(userId, token) {
+      localStorage.setItem(`trello_token_${userId}`, token);
     }
 
-    button {
-      font-size: 1em;
-      padding: 10px 15px;
+    /**
+     * Fetch board data directly from Trello’s API
+     */
+    async function getBoardData(boardId, token) {
+      const apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95';
+      const listsURL = `https://api.trello.com/1/boards/${boardId}/lists?fields=name,id&key=${apiKey}&token=${token}`;
+      const cardsURL = `https://api.trello.com/1/boards/${boardId}/cards?fields=name,idList,labels,idMembers&key=${apiKey}&token=${token}`;
+
+      const [lists, cards] = await Promise.all([
+        fetch(listsURL).then(res => res.json()),
+        fetch(cardsURL).then(res => res.json())
+      ]);
+
+      return { lists, cards };
     }
 
-    #authSection,
-    #exportSection {
-      margin-bottom: 20px;
-    }
-  </style>
-</head>
+    async function initialize() {
+      const context = await t.getContext();
+      const userId = context.member;
 
-<body>
-  <h2>Export Cards Data</h2>
-  <div id="authSection" style="display:none;">
-    <p>Please authorize this Power-Up to access your board data.</p>
-    <button id="authBtn">Login with Trello</button>
-  </div>
-  <div id="exportSection" style="display:none;">
-    <button id="exportBtn">Export Now</button>
-    <div id="status"></div>
-  </div>
+      // Check for token in local storage
+      let token = await getToken(userId);
 
-  <script>
-    (function () {
-      var netlifyBaseUrl = 'https://servoscsvexport.netlify.app/.netlify/functions';
-      var t = TrelloPowerUp.iframe();
-
-      async function getToken(userId) {
-        return localStorage.getItem(`trello_token_${userId}`);
-      }
-
-      /**
-       * Save the token on the server via Netlify function.
-       */
-      async function saveToken(userId, token) {
-        localStorage.setItem(`trello_token_${userId}`, token);
-      }
-      /**
-       * Initialize the process to get or generate a token.
-       */
-      async function initialize() {
-        const context = await t.getContext();
-        const userId = context.member;
-
-        // Check for token on the server
-        let token = await getToken(userId);
-
-        if (!token && window.location.hash) {
-          // Handle redirect after OAuth and extract the token
-          var hash = window.location.hash.substring(1);
-          var params = new URLSearchParams(hash);
-          token = params.get('token');
-
-          if (token) {
-            // Save token to server
-            await saveToken(userId, token);
-            window.location.hash = ''; // Clean up URL
-            document.getElementById('exportSection').style.display = 'block';
-            return;
-          }
-        }
+      if (!token && window.location.hash) {
+        // Handle redirect after OAuth and extract the token
+        var hash = window.location.hash.substring(1);
+        var params = new URLSearchParams(hash);
+        token = params.get('token');
 
         if (token) {
+          // Save token to local storage
+          await saveToken(userId, token);
+          window.location.hash = ''; // Clean up URL
           document.getElementById('exportSection').style.display = 'block';
-          setupExportButton(token);
-        } else {
-          document.getElementById('authSection').style.display = 'block';
-          document.getElementById('authBtn').addEventListener('click', function () {
-            initiateOAuth(userId);
-          });
+          return;
         }
       }
 
-      /**
-       * Initiate OAuth flow with Trello
-       */
-      function initiateOAuth(userId) {
-        const returnUrl = window.location.href;
-        const scope = 'read';
-        const expiration = '1hour';
-        const name = 'ServOS Export';
-        t.authorize({
-          name: name,
-          expiration: expiration,
-          scope: scope,
-          success: function() {
-            document.getElementById('exportSection').style.display = 'block';
-            document.getElementById('authSection').style.display = 'none';
-          }
+      if (token) {
+        document.getElementById('exportSection').style.display = 'block';
+        setupExportButton(token);
+      } else {
+        document.getElementById('authSection').style.display = 'block';
+        document.getElementById('authBtn').addEventListener('click', function () {
+          initiateOAuth(userId);
         });
       }
+    }
 
-      /**
-       * Setup the export button to fetch data and download CSV.
-       */
-      function setupExportButton(token) {
-        document.getElementById('exportBtn').addEventListener('click', async function () {
-          this.disabled = true;
-          document.getElementById('status').innerText = 'Exporting...';
+    function initiateOAuth(userId) {
+      const returnUrl = window.location.href;
+      const scope = 'read';
+      const expiration = '1hour';
+      const name = 'ServOS Export';
+      t.authorize({
+        name: name,
+        expiration: expiration,
+        scope: scope,
+        success: function() {
+          document.getElementById('exportSection').style.display = 'block';
+          document.getElementById('authSection').style.display = 'none';
+        }
+      });
+    }
 
-          try {
-            const context = await t.getContext();
-            const boardId = context.board;
+    function setupExportButton(token) {
+      document.getElementById('exportBtn').addEventListener('click', async function () {
+        this.disabled = true;
+        document.getElementById('status').innerText = 'Exporting...';
 
-            const response = await fetch('/.netlify/functions/get-board-data', {
-              method: 'POST',
-              body: JSON.stringify({ boardId, token })
-            });
+        try {
+          const context = await t.getContext();
+          const boardId = context.board;
 
-            if (!response.ok) {
-              throw new Error('Failed to fetch data');
-            }
+          // Get board data directly from Trello's API
+          const { lists, cards } = await getBoardData(boardId, token);
+          const csvContent = generateCSV(lists, cards);
+          downloadCSV(csvContent, 'trello_cards_export.csv');
+        } catch (err) {
+          console.error('Error fetching data:', err);
+          document.getElementById('status').innerText = 'Error: ' + err.message;
+        }
+      });
+    }
 
-            const { lists, cards } = await response.json();
-            const csvContent = generateCSV(lists, cards);
-            downloadCSV(csvContent, 'trello_cards_export.csv');
-          } catch (err) {
-            console.error('Error fetching data:', err);
-            document.getElementById('status').innerText = 'Error: ' + err.message;
-          }
-        });
-      }
+    function generateCSV(lists, cards) {
+      const listMap = {};
+      lists.forEach(list => { listMap[list.id] = list.name; });
 
-      /**
-       * Generate CSV content from lists and cards.
-       */
-      function generateCSV(lists, cards) {
-        const listMap = {};
-        lists.forEach(list => { listMap[list.id] = list.name; });
+      const csvRows = [['Card Name', 'List Name', 'Labels']];
+      cards.forEach(card => {
+        const row = [
+          `"${(card.name || '').replace(/"/g, '""')}"`,
+          `"${(listMap[card.idList] || '').replace(/"/g, '""')}"`,
+          `"${(card.labels || []).map(label => label.name).join('; ').replace(/"/g, '""')}"`
+        ];
+        csvRows.push(row.join(','));
+      });
 
-        const csvRows = [['Card Name', 'List Name', 'Labels']];
-        cards.forEach(card => {
-          const row = [
-            `"${(card.name || '').replace(/"/g, '""')}"`,
-            `"${(listMap[card.idList] || '').replace(/"/g, '""')}"`,
-            `"${(card.labels || []).map(label => label.name).join('; ').replace(/"/g, '""')}"`
-          ];
-          csvRows.push(row.join(','));
-        });
+      return csvRows.join('\n');
+    }
 
-        return csvRows.join('\n');
-      }
+    function downloadCSV(content, filename) {
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.getElementById('status').innerHTML = '';
+      a.click();
+    }
 
-      /**
-       * Download the generated CSV file.
-       */
-      function downloadCSV(content, filename) {
-        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.getElementById('status').innerHTML = '';
-        a.click();
-      }
-
-      // Start initialization
-      initialize();
-    })();
-  </script>
-</body>
-
-</html>
+    initialize();
+  })();
+</script>
