@@ -8,20 +8,20 @@
 </head>
 <body>
   <script>
-    // This code initializes your Power-Up and tells Trello what buttons to show.
+    
     TrelloPowerUp.initialize({
-      // This creates a board button (a button you see on the Trello board)
+      
       'board-buttons': function(t, options) {
         return [{
-          // Optional: Replace the URL below with your own icon URL if desired.
+          
           icon: 'https://rkwm713.github.io/ServOS-Export/icon.png',
           text: 'Export Cards',
           callback: function(t) {
-            // When the button is clicked, open the popup defined in export.html.
+            
             return t.popup({
               title: 'Export Cards Data',
               url: 'export.html',
-              height: 400  // You can adjust the popup height as needed.
+              height: 400  
             });
           }
         }];
