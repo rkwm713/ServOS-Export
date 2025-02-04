@@ -1,32 +1,32 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8">
-    <title>Export Cards Power-Up</title>
-    <script src="https://p.trellocdn.com/power-up.min.js"></script>
-  </head>
-  <body>
-    <script>
-      // Initialize the Trello Power-Up
-      TrelloPowerUp.initialize({
-        'board-buttons': function(t, options) {
-          return [{
-            // Button text
-            text: 'Export Cards',
-            // Callback function when the button is clicked
-            callback: function(t) {
-              // Open a popup displaying export.html
-              return t.popup({
-                title: 'Export Cards Data',
-                url: './export.html',
-                height: 500
-              });
-            },
-            // Condition to display the button (optional)
-            condition: 'edit'
-          }];
-        }
-      });
-    </script>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <title>Trello Export Power-Up</title>
+  <!-- This loads the Trello Power-Up client library -->
+  <script src="https://p.trellocdn.com/power-up.min.js"></script>
+</head>
+<body>
+  <script>
+    // This code initializes your Power-Up and tells Trello what buttons to show.
+    TrelloPowerUp.initialize({
+      // This creates a board button (a button you see on the Trello board)
+      'board-buttons': function(t, options) {
+        return [{
+          // Optional: Replace the URL below with your own icon URL if desired.
+          icon: 'https://rkwm713.github.io/ServOS-Export/icon.png',
+          text: 'Export Cards',
+          callback: function(t) {
+            // When the button is clicked, open the popup defined in export.html.
+            return t.popup({
+              title: 'Export Cards Data',
+              url: 'export.html',
+              height: 400  // You can adjust the popup height as needed.
+            });
+          }
+        }];
+      }
+    });
+  </script>
+</body>
 </html>
