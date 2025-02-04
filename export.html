@@ -21,8 +21,14 @@
   <script>
     // This initializes the popup with Trello’s library so you can interact with Trello.
     var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95';
-    var t = TrelloPowerUp.iframe();
+        // Example usage of the API key
+    fetch('https://api.example.com/data?api_key=' + apiKey)
+      .then(response => response.json())
+      .then(data => console.log(data))
+      .catch(error => console.error('Error:', error));
     
+    var t = TrelloPowerUp.iframe();
+      
     // A helper function to get the value from a custom field.
     function extractCustomFieldValue(item) {
       if (item.value) {
