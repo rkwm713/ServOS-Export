@@ -90,13 +90,25 @@
         }
       }
 
-        if (!boardId) {
-          throw new Error('Board ID not found in context');
-        }
-        if (!token) {
-          throw new Error('Authentication token not found');
-        }
-        
+      /**
+       * Initiate OAuth flow with Trello
+       */
+      function initiateOAuth(userId) {
+        const returnUrl = window.location.href;
+        const scope = 'read';
+        const expiration = '1hour';
+        const name = 'ServOS Export';
+        t.authorize({
+          name: name,
+          expiration: expiration,
+          scope: scope,
+          success: function() {
+            document.getElementById('exportSection').style.display = 'block';
+            document.getElementById('authSection').style.display = 'none';
+          }
+        });
+      }
+
       /**
        * Setup the export button to fetch data and download CSV.
        */
