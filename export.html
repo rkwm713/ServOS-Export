@@ -21,8 +21,7 @@
   <script>
     // This initializes the popup with Trello’s library so you can interact with Trello.
     var apiKey = 'b3fe974eb0a783caa600c2f8c3d08c95';
-        // Example usage of the API key
-    fetch('https://rkwm713.github.io/ServOS-Export/ + b3fe974eb0a783caa600c2f8c3d08c95)
+    fetch(`https://rkwm713.github.io/ServOS-Export/${apiKey}`)
       .then(response => response.json())
       .then(data => console.log(data))
       .catch(error => console.error('Error:', error));
