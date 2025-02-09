@@ -1,139 +1,31 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <title>Export Cards Data</title>
-  <!-- Load Trello’s Power-Up client library -->
-  <script src="https://p.trellocdn.com/power-up.min.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    pre { background: #f5f5f5; padding: 10px; }
-    button { margin-bottom: 10px; }
-  </style>
-</head>
-<body>
-  <h1>Export Cards Data</h1>
-  <p>Click the button below to generate CSV output.</p>
-  <button id="exportBtn">Generate CSV</button>
-  <pre id="output"></pre>
-  <div id="downloadContainer"></div>
-
-  <script>
-    var t = TrelloPowerUp.iframe();
-
-    // A helper function to get the value from a custom field.
-    function extractCustomFieldValue(item) {
-      if (item.value) {
-        if (item.value.text) return item.value.text;
-        if (item.value.number) return item.value.number;
-        if (item.value.date) return item.value.date;
-      }
-      return '';
-    }
-
-    document.getElementById('exportBtn').addEventListener('click', function() {
-      Promise.all([
-        t.board('cards'),
-        t.board('lists'),
-        t.board('members'),
-        t.board('customFields')
-      ]).then(function(results) {
-        var cards = results[0];
-        var lists = results[1];
-        var members = results[2];
-        var customFields = results[3];
-
-        // Map custom field names to their IDs.
-        var customFieldMapping = {};
-        if (Array.isArray(customFields)) {
-          customFields.forEach(function(cf) {
-            customFieldMapping[cf.name] = cf.id;
-          });
-        }
-
-        // Define which custom fields we want to export.
-        var expectedCustomFields = [
-          'W.O. #',
-          'Attacher W.O. #',
-          'OneDrive Link',
-          'Katapult',
-          'Staking Site Count',
-          'TT Site Count',
-          'TT Start',
-          'Sent to Landon',
-          'TT Received Back',
-          'ArcFM Start',
-          'ArcFM Finished',
-          'Sent to Damon',
-          'Sent to Scheduling',
-          'Added to Schedule',
-          'Construction Started',
-          'Construction Completed',
-          'Pre-ArcFM Started',
-          'Pre-ArcFM Completed'
-        ];
-
-        // Create the header row for our CSV file.
-        var header = ['List Name', 'Card Name', 'Members', 'Labels'].concat(expectedCustomFields);
-        var csvRows = [header.join(',')];
-
-        // Loop through each card to create a row in our CSV.
-        cards.forEach(function(card) {
-          var listName = lists.find(list => list.id === card.idList)?.name || '';
-          var cardName = card.name || '';
-          var memberNames = (card.idMembers || []).map(function(memberId) {
-            var member = members.find(m => m.id === memberId);
-            return member ? member.fullName : '';
-          }).join('; ');
-          var labelNames = (card.labels || []).map(function(label) {
-            return label.name || label.color;
-          }).join('; ');
-
-          // For each custom field we expect, get the value from the card.
-          var customValues = expectedCustomFields.map(function(fieldName) {
-            var fieldId = customFieldMapping[fieldName];
-            if (card.customFieldItems && fieldId) {
-              var fieldItem = card.customFieldItems.find(function(item) {
-                return item.idCustomField === fieldId;
+  <head>
+    <meta charset="utf-8">
+    <title>Export Cards Power-Up</title>
+    <!-- Load the Trello Power-Up client library -->
+    <script src="https://p.trellocdn.com/power-up.min.js"></script>
+    <script>
+      // Initialize the power-up and register a board button.
+      TrelloPowerUp.initialize({
+        'board-buttons': function(t, options) {
+          return [{
+            text: 'Export Cards',
+            callback: function(t) {
+              // Open the popup (export.html) when the button is clicked.
+              return t.popup({
+                title: 'Export Cards',
+                url: './export.html',
+                height: 500
               });
-              return fieldItem ? '"' + extractCustomFieldValue(fieldItem) + '"' : '""';
             }
-            return '""';
-          });
-
-          // Build a CSV row (each value wrapped in quotes).
-          var row = [
-            '"' + listName + '"',
-            '"' + cardName + '"',
-            '"' + memberNames + '"',
-            '"' + labelNames + '"'
-          ].concat(customValues);
-
-          csvRows.push(row.join(','));
-        });
-
-        var csvContent = csvRows.join('\n');
-
-        // Show the CSV text in the window (so you can see it).
-        document.getElementById('output').textContent = csvContent;
-
-        // Create a downloadable CSV file.
-        var blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        var url = URL.createObjectURL(blob);
-        var downloadLink = document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = 'trello_cards_export.csv';
-        downloadLink.textContent = 'Download CSV';
-
-        // Place the download link on the page.
-        var container = document.getElementById('downloadContainer');
-        container.innerHTML = '';
-        container.appendChild(downloadLink);
-
-      }).catch(function(error) {
-        console.error('Error fetching board data:', error);
+          }];
+        }
       });
-    });
-  </script>
-</body>
+    </script>
+  </head>
+  <body>
+    <h1>Export Cards Power-Up</h1>
+    <p>This Power-Up exports card data (including custom fields) to a CSV file.</p>
+  </body>
 </html>
