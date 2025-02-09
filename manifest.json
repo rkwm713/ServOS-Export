@@ -1,0 +1,15 @@
+{
+  "name": "Export Cards Power-Up",
+  "description": "A Trello Power-Up that exports card data including custom fields to CSV.",
+  "capabilities": {
+    "board-buttons": true,
+    "card-buttons": false,
+    "card-detail-badges": false,
+    "show-settings": false
+  },
+  "apiVersion": 1,
+  "authorization": {
+    "type": "none"
+  },
+  "connectors": {}
+}
