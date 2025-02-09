@@ -27,7 +27,6 @@
         // - All board members (to map member IDs to usernames)
         // - Shared custom field definitions (mapping custom field IDs to names)
         Promise.all([
-          t.cards('id', 'name', 'idList', 'labels', 'idMembers', 'customFieldItems'),
           t.board('lists'),
           t.board('members'),
           t.get('board', 'shared', 'customFields')
